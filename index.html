@@ -48,7 +48,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const E=()=>({j:[],s:{},h:[],f:null});
-let S;try{S=JSON.parse(localStorage.getItem('fjp2'))||E()}catch(e){S=E()}
+let S;try{S=JSON.parse(localStorage.getItem('fjp2'))||E()}catch(e){S=E()}S.cfg=S.cfg||{};
 let C=[],view='now';
 const save=()=>{try{localStorage.setItem('fjp2',JSON.stringify(S))}catch(e){}},uid=()=>Math.random().toString(36).slice(2,9);
 const hm=t=>t?new Date(t).toTimeString().slice(0,5):'',mn=s=>{const m=/^(\d\d):(\d\d)$/.exec(s||'');return m?+m[1]*60+ +m[2]:null};
@@ -72,13 +72,14 @@ function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(o
  let h='';if(!st.length)h='<div class="card">Nog geen Journeys. Ga naar <b>Upload</b> of voeg handmatig toe.</div>';
  else{if(cur){const r=cur.r;h+=`<div class="card ${r.st}"><div class="m">Stap ${cur.n} van ${st.length} · ${esc(cur.k)}</div><div class="big">${esc(cur.t)}</div>
  <div class="m">${cur.k=='Auto'?'Vertrek uiterlijk '+esc(cur.j.tStart||'?')+' · aankomst gepland '+esc(cur.j.tEnd||'?'):'Vertrek '+esc(cur.j.tStart||'?')+' · aankomst '+esc(cur.j.tEnd||'?')}${r.start?' · gestart '+hm(r.start):''}</div>
- ${cur.j.note?`<p class="m" style="white-space:pre-line">${esc(cur.j.note)}</p>`:''}
+ ${cur.j.note?`<p class="m" style="white-space:pre-line">${esc(cur.j.note)}</p>`:''}${r.route?`<div class="card" style="white-space:pre-line;margin:8px 0"><b>Gekozen route</b>\n${esc(r.route)}</div>`:''}
  <div class="row">${r.st=='bezig'?'':`<button onclick="act('${cur.id}','start')">Start</button>`}<button class="ok" onclick="act('${cur.id}','done')">Klaar ✓</button></div>
- <div class="row"><button class="g" onclick="act('${cur.id}','delay')">Vertraging</button><button class="g" onclick="act('${cur.id}','skip')">Overslaan</button></div></div>`}
+ <div class="row"><button class="g" onclick="act('${cur.id}','delay')">Vertraging</button><button class="g" onclick="act('${cur.id}','skip')">Overslaan</button></div>
+ ${cur.k=='OV'?`<div class="row"><button onclick="plan('${cur.id}')">Route zoeken</button></div>`:''}<div id="pl-${cur.id}"></div></div>`}
  else h+='<div class="card big">Alle stappen afgerond 🎉 Bekijk het Rapport.</div>';
  h+='<h2>Tijdlijn</h2>'+st.map(s=>`<div class="card ${s.r.st}" onclick="S.f='${s.id}';render()"><span class="chip">${s.r.st}</span> <b>${s.n}.</b> ${esc(s.t)}<div class="m">${s.r.end?'klaar '+hm(s.r.end):''}${' · '+esc(s.j.tStart||'?')+'→'+esc(s.j.tEnd||'?')}</div></div>`).join('')}
  $('#v-now').innerHTML=h;
- $('#v-j').innerHTML=S.j.map((j,i)=>`<div class="card"><b>Journey ${i+1}</b>${form(j,'j',i)}${j.raw?`<details><summary>Originele OCR-tekst</summary><pre>${esc(j.raw)}</pre></details>`:''}<div class="row"><button class="g" onclick="mv(${i},-1)">↑</button><button class="g" onclick="mv(${i},1)">↓</button><button class="r" onclick="if(confirm('Verwijderen?')){S.j.splice(${i},1);save();render()}">Verwijder</button></div></div>`).join('')+`<div class="row"><button class="g" onclick="S.j.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:''});save();render()">+ Journey</button><button class="r" onclick="newDay()">Nieuwe dag</button></div><p class="m">Volgorde wijzig je alleen zelf (↑ ↓). De app herordent nooit zelf.</p>`;
+ $('#v-j').innerHTML=S.j.map((j,i)=>`<div class="card"><b>Journey ${i+1}</b>${form(j,'j',i)}${j.raw?`<details><summary>Originele OCR-tekst</summary><pre>${esc(j.raw)}</pre></details>`:''}<div class="row"><button class="g" onclick="mv(${i},-1)">↑</button><button class="g" onclick="mv(${i},1)">↓</button><button class="r" onclick="if(confirm('Verwijderen?')){S.j.splice(${i},1);save();render()}">Verwijder</button></div></div>`).join('')+`<div class="row"><button class="g" onclick="S.j.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:''});save();render()">+ Journey</button><button class="r" onclick="newDay()">Nieuwe dag</button></div><p class="m">Volgorde wijzig je alleen zelf (↑ ↓). De app herordent nooit zelf.</p>${SET()}`;
  rep(st)}
 const mv=(i,d)=>{const j=i+d;if(j<0||j>=S.j.length)return;[S.j[i],S.j[j]]=[S.j[j],S.j[i]];save();render()};
 function newDay(){if(!confirm('Huidige dag archiveren en leegmaken?'))return;S.h.push({d:new Date().toISOString().slice(0,10),j:S.j,s:S.s});S.j=[];S.s={};S.f=null;save();render()}
@@ -167,5 +168,26 @@ $('#ocr').onclick=async()=>{const fs=[...$('#files').files];if(!fs.length)return
 $('#man').onclick=()=>{C.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:'',raw:'',flags:[]});cands()};
 function cands(){$('#cands').innerHTML=C.map((c,i)=>`<div class="card"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ck${i}" ${c.dup?'':'checked'}> Toevoegen ${c.dup?'<b class="w">⚠ mogelijk dubbel</b>':''}</label>${form(c,'c',i)}<details><summary>Originele OCR-tekst (${esc(c.src||'')})</summary><pre>${esc(c.raw)}</pre></details></div>`).join('')+(C.length?'<button style="width:100%" onclick="addSel()">Toevoegen aan vandaag</button>':'')}
 function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),type:c.type,from:c.from,to:c.to,tStart:c.tStart,tEnd:c.tEnd,note:c.note,raw:c.raw,key:c.key})});C=[];save();cands();go('now')}
+
+const SET=()=>`<h2>Planner</h2><div class="card"><label>Planner-adres (leeg = zelfde server als de app)<input value="${esc(S.cfg.url||'')}" oninput="S.cfg.url=this.value.trim();save()"></label><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" ${S.cfg.demo?'checked':''} onchange="S.cfg.demo=this.checked;save()"> Demo-modus (GESIMULEERDE data)</label><button class="g" style="width:100%;margin-top:8px" onclick="ptest()">Test planner</button><p id="pt" class="m"></p></div>`;
+const api=async p=>{const r=await fetch((S.cfg.url||'')+p);if(!r.ok)throw Error('Planner antwoordde '+r.status);return r.json()};
+async function geo(a){S.geo=S.geo||{};if(S.geo[a])return S.geo[a];const r=await api('/api/v1/geocode?text='+encodeURIComponent(a)),x=(Array.isArray(r)?r:r.results||[])[0];if(!x)throw Error('Adres niet gevonden: '+a);const v=x.lat+','+(x.lon??x.lng);S.geo[a]=v;save();return v}
+const dlDate=s=>{const m=mn(s);if(m==null)return null;const d=new Date();d.setHours(0,m,0,0);return d};
+const tm=t=>t?new Date(t).toTimeString().slice(0,5):'';
+const ML={WALK:'Lopen',BUS:'Bus',TRAM:'Tram',SUBWAY:'Metro',RAIL:'Trein',REGIONAL_RAIL:'Trein',HIGHSPEED_RAIL:'Trein',LONG_DISTANCE:'Trein',NIGHT_RAIL:'Trein',FERRY:'Veer'};
+function demo(ref,ab){const m=6e4,e=ab?ref:new Date(+ref+75*m),s=new Date(+e-75*m),T=a=>new Date(+s+a*m).toISOString();
+ const mk=o=>({startTime:T(o.a),endTime:T(o.b),scheduledStartTime:T(o.a-(o.d||0)),mode:o.m,routeShortName:o.n,headsign:o.h,realTime:!!o.d,duration:(o.b-o.a)*60});
+ return{sim:true,itineraries:[{startTime:T(0),endTime:T(75),transfers:1,legs:[mk({a:0,b:8,m:'WALK'}),mk({a:8,b:40,m:'REGIONAL_RAIL',n:'Sprinter',h:"'s-Hertogenbosch",d:4}),mk({a:44,b:70,m:'RAIL',n:'Intercity',h:'Maastricht'}),mk({a:70,b:75,m:'WALK'})]}]}}
+async function plan(id){const s=steps().find(x=>x.id==id),j=s.j,box=$('#pl-'+id),now=new Date(),dl=dlDate(j.tEnd),ab=!!(dl&&now<dlDate(j.tStart||j.tEnd)),ref=ab?dl:now;box.innerHTML='<p class="m">Zoeken…</p>';
+ try{let res;if(S.cfg.demo)res=demo(ref,ab);else{const [f,t]=await Promise.all([geo(j.from),geo(j.to)]);res=await api(`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(ref.toISOString())}&arriveBy=${ab}&numItineraries=4`)}
+  const its=res.itineraries||[];if(!its.length){box.innerHTML='<p class="m">Geen reisopties gevonden.</p>';return}
+  const dm=l=>l.realTime&&l.scheduledStartTime?Math.round((new Date(l.startTime)-new Date(l.scheduledStartTime))/6e4):0;
+  const txt=i=>i.legs.map(l=>l.mode=='WALK'?'Lopen '+Math.max(1,Math.round((l.duration||0)/60))+' min':`${ML[l.mode]||l.mode} ${l.routeShortName||''} → ${l.headsign||''} ${tm(l.startTime)}→${tm(l.endTime)}${dm(l)>=1?` (+${dm(l)} min live)`:''}`).join('\n');
+  window.PL=its.map(i=>({t:txt(i),sim:!!res.sim}));
+  box.innerHTML=(res.sim?'<p class="w"><b>GESIMULEERD, geen echte data</b></p>':'')+(ab?'':'<p class="m">Je bent later dan gepland: zoeken vanaf nu.</p>')+its.map((i,k)=>{const late=dl?Math.round((new Date(i.endTime)-dl)/6e4):null;return`<div class="card"><b>${tm(i.startTime)} → ${tm(i.endTime)}</b> · ${i.transfers} overstap(pen)${late==null?'':late>0?` · <span class="w">${late} min te laat</span>`:` · op tijd (${-late} min marge)`}<div class="m" style="white-space:pre-line">${esc(PL[k].t)}</div><button style="width:100%;margin-top:8px" onclick="pick('${id}',${k})">Kies deze</button></div>`}).join('')}
+ catch(e){box.innerHTML=`<p class="w">Planner niet bereikbaar of fout: ${esc(e.message)}</p>`}}
+function pick(id,k){const p=PL[k];S.s[id].route=(p.sim?'[GESIMULEERD] ':'')+'gekozen '+hm(Date.now())+'\n'+p.t;save();render()}
+async function ptest(){const o=$('#pt');if(S.cfg.demo){o.textContent='Demo-modus staat aan (gesimuleerd).';return}
+ try{const r=await api('/api/v5/plan?fromPlace=51.8118,5.2517&toPlace=51.4433,5.4812&time='+encodeURIComponent(new Date(Date.now()+36e5).toISOString())+'&numItineraries=1');o.textContent='Planner werkt: '+(r.itineraries||[]).length+' reisoptie(s) gevonden.'}catch(e){o.textContent='Mislukt: '+e.message}}
 render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
