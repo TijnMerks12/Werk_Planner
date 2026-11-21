@@ -171,7 +171,7 @@ function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),ty
 
 const SET=()=>`<h2>Planner</h2><div class="card"><label>Planner-adres (leeg = zelfde server als de app)<input value="${esc(S.cfg.url||'')}" oninput="S.cfg.url=this.value.trim();save()"></label><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" ${S.cfg.demo?'checked':''} onchange="S.cfg.demo=this.checked;save()"> Demo-modus (GESIMULEERDE data)</label><button class="g" style="width:100%;margin-top:8px" onclick="ptest()">Test planner</button><p id="pt" class="m"></p></div>`;
 const api=async p=>{const r=await fetch((S.cfg.url||'')+p);if(!r.ok)throw Error('Planner antwoordde '+r.status);return r.json()};
-async function geo(a){S.geo=S.geo||{};if(S.geo[a])return S.geo[a];const r=await api('/api/v1/geocode?text='+encodeURIComponent(a)),x=(Array.isArray(r)?r:r.results||[])[0];if(!x)throw Error('Adres niet gevonden: '+a);const v=x.lat+','+(x.lon??x.lng);S.geo[a]=v;save();return v}
+async function geo(a){S.geo=S.geo||{};if(S.geo[a])return S.geo[a];const r=await api('/api/v1/geocode?text='+encodeURIComponent(a)),x=(Array.isArray(r)?r:r.results||[])[0];if(!x)throw Error('Adres niet gevonden: '+a);const v=x.lat+','+(x.lon??x.lng);S.geo[a]=v;(S.geoN=S.geoN||{})[a]=x.name||'';save();return v}
 const dlDate=s=>{const m=mn(s);if(m==null)return null;const d=new Date();d.setHours(0,m,0,0);return d};
 const tm=t=>t?new Date(t).toTimeString().slice(0,5):'';
 const ML={WALK:'Lopen',BUS:'Bus',TRAM:'Tram',SUBWAY:'Metro',RAIL:'Trein',REGIONAL_RAIL:'Trein',HIGHSPEED_RAIL:'Trein',LONG_DISTANCE:'Trein',NIGHT_RAIL:'Trein',FERRY:'Veer'};
@@ -179,8 +179,9 @@ function demo(ref,ab){const m=6e4,e=ab?ref:new Date(+ref+75*m),s=new Date(+e-75*
  const mk=o=>({startTime:T(o.a),endTime:T(o.b),scheduledStartTime:T(o.a-(o.d||0)),mode:o.m,routeShortName:o.n,headsign:o.h,realTime:!!o.d,duration:(o.b-o.a)*60});
  return{sim:true,itineraries:[{startTime:T(0),endTime:T(75),transfers:1,legs:[mk({a:0,b:8,m:'WALK'}),mk({a:8,b:40,m:'REGIONAL_RAIL',n:'Sprinter',h:"'s-Hertogenbosch",d:4}),mk({a:44,b:70,m:'RAIL',n:'Intercity',h:'Maastricht'}),mk({a:70,b:75,m:'WALK'})]}]}}
 async function plan(id){const s=steps().find(x=>x.id==id),j=s.j,box=$('#pl-'+id),now=new Date(),dl=dlDate(j.tEnd),ab=!!(dl&&now<dlDate(j.tStart||j.tEnd)),ref=ab?dl:now;box.innerHTML='<p class="m">Zoeken…</p>';
- try{let res;if(S.cfg.demo)res=demo(ref,ab);else{const [f,t]=await Promise.all([geo(j.from),geo(j.to)]);res=await api(`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(ref.toISOString())}&arriveBy=${ab}&numItineraries=4`)}
-  const its=res.itineraries||[];if(!its.length){box.innerHTML='<p class="m">Geen reisopties gevonden.</p>';return}
+ try{let res,dbg='';if(S.cfg.demo)res=demo(ref,ab);else{const [f,t]=await Promise.all([geo(j.from),geo(j.to)]);const q=`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(ref.toISOString())}&arriveBy=${ab}&numItineraries=4`;try{res=await api(q+'&maxPreTransitTime=1800&maxPostTransitTime=1800')}catch(e){res=await api(q)}
+  dbg=`Gezocht: ${(S.geoN||{})[j.from]||j.from} → ${(S.geoN||{})[j.to]||j.to} (${f} → ${t}), ${ab?'aankomst voor':'vertrek na'} ${tm(ref)}`}
+  const its=res.itineraries||[];if(!its.length){box.innerHTML='<p class="m">Geen reisopties gevonden.<br>'+esc(dbg)+'</p>';return}
   const dm=l=>l.realTime&&l.scheduledStartTime?Math.round((new Date(l.startTime)-new Date(l.scheduledStartTime))/6e4):0;
   const txt=i=>i.legs.map(l=>l.mode=='WALK'?'Lopen '+Math.max(1,Math.round((l.duration||0)/60))+' min':`${ML[l.mode]||l.mode} ${l.routeShortName||''} → ${l.headsign||''} ${tm(l.startTime)}→${tm(l.endTime)}${dm(l)>=1?` (+${dm(l)} min live)`:''}`).join('\n');
   window.PL=its.map(i=>({t:txt(i),sim:!!res.sim}));
