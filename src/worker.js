@@ -23,6 +23,12 @@ async function route(url, env) {
   const ll = (v) => { const [a, b] = String(v || '').split(',').map(Number); return (isFinite(a) && isFinite(b)) ? { location: { latLng: { latitude: a, longitude: b } } } : null; };
   const o = ll(url.searchParams.get('from')), d = ll(url.searchParams.get('to'));
   if (!o || !d) return j({ error: 'ongeldige coördinaten' }, 400);
+  // Eigen dagmaximum (Google laat het quotum niet aanpassen): teller in Cloudflare KV, zonder teller geen Google-aanroepen
+  if (!env.USAGE) return j({ error: 'dagteller ontbreekt: Google staat voor de veiligheid uit' }, 503);
+  const day = new Date().toISOString().slice(0, 10), key = 'g:' + day, max = Number(env.GOOGLE_DAILY_MAX) || 30;
+  const used = Number(await env.USAGE.get(key)) || 0;
+  if (used >= max) return j({ error: 'dagmaximum bereikt (' + max + '), terugvallen op OSRM', used, max }, 429);
+  await env.USAGE.put(key, String(used + 1), { expirationTtl: 172800 });
   const body = { origin: o, destination: d, travelMode: 'DRIVE', routingPreference: 'TRAFFIC_AWARE' };
   const t = new Date(url.searchParams.get('t') || '');
   if (t.getTime() > Date.now() + 120000) body.departureTime = t.toISOString();   // alleen toekomstige tijden toegestaan
@@ -34,7 +40,7 @@ async function route(url, env) {
   const x = await r.json().catch(() => ({}));
   const sec = parseInt((x.routes && x.routes[0] && x.routes[0].duration) || '');
   if (!r.ok || !isFinite(sec)) return j({ error: (x.error && x.error.message) || 'Google gaf geen route', status: r.status }, 502);
-  return j({ min: Math.round(sec / 60), km: Math.round((x.routes[0].distanceMeters || 0) / 100) / 10 });
+  return j({ min: Math.round(sec / 60), km: Math.round((x.routes[0].distanceMeters || 0) / 100) / 10, used: used + 1, max });
 }
 
 async function handle(request, env) {
