@@ -1,0 +1,243 @@
+<!doctype html><html lang="nl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Journeys">
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#0b5fff"><title>Fleetpoort Journey Planner</title>
+<style>
+:root{--bg:#f2f2f7;--c:#fff;--t:#111;--m:#6b6b76;--a:#0b5fff;--ok:#1a8f3c;--w:#c77700;--r:#d33;--b:#d9d9e0}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--c:#1c1c1e;--t:#f2f2f7;--m:#9a9aa5;--a:#4d8dff;--ok:#32d05b;--w:#ffb340;--r:#ff6b6b;--b:#3a3a3e}}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--t);font:16px/1.4 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+main{max-width:640px;margin:0 auto;padding:12px}h1{font-size:20px;margin:8px 0}h2{font-size:15px;color:var(--m);margin:16px 0 6px;text-transform:uppercase}
+.card{background:var(--c);border-radius:16px;padding:14px;margin:10px 0;border:1px solid var(--b)}
+.big{font-size:22px;font-weight:700}.m{color:var(--m);font-size:14px}.w{color:var(--w)}
+button,select{font:inherit;border-radius:14px;border:0;padding:14px;background:var(--a);color:#fff;font-weight:600;min-height:52px}
+button.g{background:var(--bg);color:var(--t);border:1px solid var(--b)}button.ok{background:var(--ok)}button.r{background:var(--r)}
+.row{display:flex;gap:8px;margin-top:10px}.row>*{flex:1}
+select{background:var(--bg);color:var(--t);border:1px solid var(--b);width:100%}
+label{display:block;font-size:13px;color:var(--m);margin-top:8px}
+input:not([type=checkbox]),textarea{width:100%;font:inherit;padding:12px;border-radius:10px;border:1px solid var(--b);background:var(--bg);color:var(--t)}
+input[type=checkbox]{width:22px;height:22px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--c);border-top:1px solid var(--b);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;color:var(--m);border-radius:0;font-size:13px}nav button.on{color:var(--a)}
+.chip{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;background:var(--bg);border:1px solid var(--b)}
+.klaar{border-color:var(--ok)}.vertraagd{border-color:var(--w)}.bezig{border-color:var(--a)}.overgeslagen{opacity:.6}
+.banner{background:var(--c);border-left:4px solid var(--w);padding:10px;border-radius:8px;font-size:13px;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px solid var(--b);padding:5px 3px;text-align:left}
+.v{display:none}.v.on{display:block}details{margin-top:8px;font-size:12px;color:var(--m)}pre{white-space:pre-wrap}
+@media print{nav,.np{display:none}body{background:#fff;color:#000}}
+</style></head><body><main>
+<h1>Fleetpoort Journey Planner</h1>
+<div class="banner">Fase 1: de planning komt uit je Fleetpoort-screenshots (door jou gecontroleerd). De app berekent zelf nog geen routes en verzint geen tijden; werkelijke tijden zijn gemeten op je telefoon.</div>
+
+<section id="v-now" class="v on"></section>
+
+<section id="v-up" class="v">
+<div class="card"><div class="big">Screenshots uploaden</div>
+<p class="m">OCR draait lokaal in je browser (Tesseract). Er gaat niets naar een betaalde dienst. Eerste keer duurt langer (taaldata wordt gedownload).</p>
+<input id="files" type="file" accept="image/*" multiple>
+<div class="row"><button id="ocr">Lees screenshots</button><button class="g" id="man">+ Handmatig</button></div>
+<p id="prog" class="m"></p></div><div class="card"><div class="big">Dag uit Gmail</div><p class="m">Haalt de Fleetpoort-mails op en rekent de dag door vanaf je vertrektijd: OV via de planner, rijtijd via OSRM (schatting), 12 min ophalen en 12 min afleveren. Stel eerst de koppeling in onder Journeys → Planner.</p><button id="mailbtn" style="width:100%">Haal dag op</button><p id="mst" class="m"></p></div><div id="cands"></div></section>
+
+<section id="v-j" class="v"></section>
+<section id="v-rep" class="v"></section>
+<section id="v-ov" class="v"></section>
+</main>
+<nav><button data-v="now" class="on">Nu</button><button data-v="up">Upload</button><button data-v="j">Journeys</button><button data-v="rep">Rapport</button><button data-v="ov">Overzicht</button></nav>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const E=()=>({j:[],s:{},h:[],f:null});
+let S;try{S=JSON.parse(localStorage.getItem('fjp2'))||E()}catch(e){S=E()}S.cfg=S.cfg||{};
+let C=[],view='now';
+const save=()=>{try{localStorage.setItem('fjp2',JSON.stringify(S))}catch(e){}},uid=()=>Math.random().toString(36).slice(2,9);
+const hm=t=>t?new Date(t).toTimeString().slice(0,5):'',mn=s=>{const m=/^(\d\d):(\d\d)$/.exec(s||'');return m?+m[1]*60+ +m[2]:null};
+const F=[['type','Soort (OV of Auto)'],['from','Van (adres, postcode)'],['to','Naar (adres, postcode)'],['tStart','Vertrek (UU:MM; bij auto: uiterlijk)'],['tEnd','Aankomst (UU:MM)'],['note','Details']];
+const form=(o,c,i)=>F.map(([k,l])=>`<label>${l}${c=='c'&&o.flags?.includes(k)?' <b class="w">⚠ niet betrouwbaar herkend</b>':''}${k=='note'?`<textarea rows="5" data-c="${c}" data-i="${i}" data-k="${k}">${esc(o[k])}</textarea>`:`<input data-c="${c}" data-i="${i}" data-k="${k}" value="${esc(o[k])}" ${k[0]=='t'&&k!='type'?'inputmode="numeric" placeholder="09:30"':''}>`}</label>`).join('');
+document.addEventListener('input',e=>{const t=e.target,d=t.dataset;if(!d.k)return;const o=(d.c=='c'?C:S.j)[d.i];o[d.k]=t.value;if(d.c=='c')o.flags=(o.flags||[]).filter(f=>f!=d.k);else save()});
+const sh=a=>a?String(a).split(',')[0]:'?';
+const steps=()=>S.j.map((j,i)=>({id:j.id,j,k:j.type||'Leg',t:(j.type||'Leg')+': '+sh(j.from)+' → '+sh(j.to),n:i+1,r:S.s[j.id]||(S.s[j.id]={st:'todo'})}));
+const open=s=>['todo','bezig','vertraagd'].includes(s.r.st);
+const delay=s=>{if(s.r.end&&mn(s.j.tEnd)!=null){const a=mn(hm(s.r.end));return{m:a-mn(s.j.tEnd),h:'gemeten'}}return s.r.delay!=null?{m:s.r.delay,h:'handmatig'}:null};
+function go(v){view=v;document.querySelectorAll('.v').forEach(x=>x.classList.toggle('on',x.id=='v-'+v));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));render()}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+function act(id,a){const s=steps().find(x=>x.id==id),r=S.s[id];
+ if(a=='start'){r.st='bezig';r.start=Date.now()}
+ if(a=='done'){r.st='klaar';r.end=Date.now();S.f=null}
+ if(a=='skip'){r.st='overgeslagen';S.f=null}
+ if(a=='delay'){const m=parseInt(prompt('Hoeveel minuten vertraging?'),10);if(isNaN(m))return;r.delay=m;r.cause=prompt('Oorzaak (bijv. trein 15 min te laat)?')||'';if(r.st!='bezig')r.st='vertraagd'}
+ if(a=='reset'){S.s[id]={st:'todo'}}
+ save();render()}
+function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(open);
+ let h='';if(!st.length)h='<div class="card">Nog geen Journeys. Ga naar <b>Upload</b> of voeg handmatig toe.</div>';
+ else{if(cur){const r=cur.r;h+=`<div class="card ${r.st}"><div class="m">Stap ${cur.n} van ${st.length} · ${esc(cur.k)}</div><div class="big">${esc(cur.t)}</div>
+ <div class="m">${cur.k=='Auto'?'Vertrek uiterlijk '+esc(cur.j.tStart||'?')+' · aankomst gepland '+esc(cur.j.tEnd||'?'):'Vertrek '+esc(cur.j.tStart||'?')+' · aankomst '+esc(cur.j.tEnd||'?')}${r.start?' · gestart '+hm(r.start):''}</div>
+ ${cur.j.note?`<p class="m" style="white-space:pre-line">${esc(cur.j.note)}</p>`:''}${r.route?`<div class="card" style="white-space:pre-line;margin:8px 0"><b>Gekozen route</b>\n${esc(r.route)}</div>`:''}
+ <div class="row">${r.st=='bezig'?'':`<button onclick="act('${cur.id}','start')">Start</button>`}<button class="ok" onclick="act('${cur.id}','done')">Klaar ✓</button></div>
+ <div class="row"><button class="g" onclick="act('${cur.id}','delay')">Vertraging</button><button class="g" onclick="act('${cur.id}','skip')">Overslaan</button></div>
+ ${cur.k=='OV'?`<div class="row"><button onclick="plan('${cur.id}')">Route zoeken</button></div>`:''}<div id="pl-${cur.id}"></div></div>`}
+ else h+='<div class="card big">Alle stappen afgerond 🎉 Bekijk het Rapport.</div>';
+ h+='<h2>Tijdlijn</h2>'+st.map(s=>`<div class="card ${s.r.st}" onclick="S.f='${s.id}';render()"><span class="chip">${s.r.st}</span> <b>${s.n}.</b> ${esc(s.t)}<div class="m">${s.r.end?'klaar '+hm(s.r.end):''}${' · '+esc(s.j.tStart||'?')+'→'+esc(s.j.tEnd||'?')}</div></div>`).join('')}
+ $('#v-now').innerHTML=h;
+ $('#v-j').innerHTML=S.j.map((j,i)=>`<div class="card"><b>Journey ${i+1}</b>${form(j,'j',i)}${j.raw?`<details><summary>Originele OCR-tekst</summary><pre>${esc(j.raw)}</pre></details>`:''}<div class="row"><button class="g" onclick="mv(${i},-1)">↑</button><button class="g" onclick="mv(${i},1)">↓</button><button class="r" onclick="if(confirm('Verwijderen?')){S.j.splice(${i},1);save();render()}">Verwijder</button></div></div>`).join('')+`<div class="row"><button class="g" onclick="S.j.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:''});save();render()">+ Journey</button><button class="r" onclick="newDay()">Nieuwe dag</button></div><p class="m">Volgorde wijzig je alleen zelf (↑ ↓). De app herordent nooit zelf.</p>${SET()}`;
+ rep(st);$('#v-ov').innerHTML=ovPage()}
+const mv=(i,d)=>{const j=i+d;if(j<0||j>=S.j.length)return;[S.j[i],S.j[j]]=[S.j[j],S.j[i]];save();render()};
+function newDay(){if(!confirm('Huidige dag archiveren en leegmaken?'))return;S.h.push({d:new Date().toISOString().slice(0,10),j:S.j,s:S.s});S.j=[];S.s={};S.f=null;save();render()}
+function rows(st){return st.map(s=>{const d=delay(s);return[s.n,s.k,s.t,s.j.tStart||'',s.j.tEnd||'',hm(s.r.start),hm(s.r.end),s.r.st,d?d.m:'',d?d.h:'',s.r.cause||'']})}
+function rep(st){const ds=st.map(delay).filter(Boolean),pos=ds.filter(d=>d.m>0);
+ $('#v-rep').innerHTML=`<div class="card"><div class="big">Dagoverzicht</div><p>Afgeronde stappen: <b>${st.filter(s=>s.r.st=='klaar').length}</b> / ${st.length}<br>Overgeslagen: <b>${st.filter(s=>s.r.st=='overgeslagen').length}</b><br>Vertragingen: <b>${pos.length}</b> · totaal <b>${pos.reduce((a,d)=>a+d.m,0)} min</b></p>
+ <p class="m">‘gemeten’ = werkelijke eindtijd (door jou afgetikt) minus geplande eindtijd. ‘handmatig’ = door jou ingevoerd. Ontbrekende tijden blijven leeg.</p></div>
+ <div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Stap</th><th>Plan</th><th>Werkelijk</th><th>Min</th><th>Oorzaak</th></tr>${rows(st).map(r=>`<tr><td>${r[0]}</td><td>${esc(r[2])}<br><span class="m">${r[7]}</span></td><td>${r[3]}${r[4]?'–'+r[4]:''}</td><td>${r[5]}${r[6]?'–'+r[6]:''}</td><td>${r[8]}${r[9]?'<br><span class="m">'+r[9]+'</span>':''}</td><td>${esc(r[10])}</td></tr>`).join('')}</table></div>
+ <div class="row np"><button onclick="csv()">Export CSV</button><button class="g" onclick="print()">PDF / print</button></div>`}
+function csv(){const H=['Stap','Soort','Omschrijving','Gepland start','Gepland einde','Werkelijk start','Werkelijk einde','Status','Vertraging min','Herkomst vertraging','Oorzaak'];
+ const q=v=>'"'+String(v).replace(/"/g,'""')+'"';const t='\ufeff'+[H,...rows(steps())].map(r=>r.map(q).join(';')).join('\r\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='werkdag-'+new Date().toISOString().slice(0,10)+'.csv';a.click()}
+const T=(h,m)=>String(h).padStart(2,'0')+':'+m;
+const TM=/(?<!\d)([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d)/;
+const NOISE=/fleetport|sneltoetsen|kaartgegevens|voorwaarden|cookie|copyright|privacy/i;
+function wp(line,next){const m=/^(.*?)(\d{4})\s?([A-Z]{2})\b[,.]?\s*(.*)$/.exec(line);if(!m)return null;
+ let tk=m[1].trim().split(/\s+/).filter(Boolean),letter='';
+ while(tk.length&&(/^[^\p{L}\p{N}]+$/u.test(tk[0])||/^[A-Za-z]$/.test(tk[0])||/^[@©&]\S?$/.test(tk[0])||/^[A-Za-z]{1,2}[)\]|]$/.test(tk[0])||(!tk.length||tk.length>2)&&/^[A-Z]{2}$/.test(tk[0]))){if(/^[A-E]$/.test(tk[0]))letter=tk[0];tk.shift()}
+ const addr=tk.join(' ').replace(/[,\s]+$/,'');if(addr.length<4)return null;
+ let rest=m[4],tm=TM.exec(rest);if(!tm&&next){const nd=next.replace(/[^\d:.]/g,'');if(/^\d{1,2}[:.]\d{2}$/.test(nd))tm=TM.exec(nd)}let city=rest.replace(/[^\p{L}\p{N}\s'’.-]/gu,' ').replace(TM,'').trim();
+ city=city.replace(/\d+/g,' ').replace(/\s+\S{1,2}$/,'').replace(/^\W+/,'').replace(/\s+/g,' ').trim();
+ if(!/\p{L}{3}/u.test(city)){city='';if(next&&/^[\p{L}'’. -]{3,}$/u.test(next.trim())&&!/^(Loop|Rij|Vertrek|Geschat|Stap|Sprinter|Intercity|Bus|Tram|Metro)/i.test(next.trim()))city=next.trim()}
+ return{t:'WP',letter,addr,pc:m[2]+m[3],city,time:tm?T(tm[1],tm[2]):''}}
+function events(text){let L=text.split('\n').map(x=>x.trim()).filter(x=>x&&!NOISE.test(x));const ev=[];L=L.reduce((a,l)=>{if(a.length&&/\b\d{4}$/.test(a.at(-1))&&/^[A-Z]{2}\b/.test(l))a[a.length-1]+=' '+l;else a.push(l);return a},[]);let prev='';
+ L.forEach((l,i)=>{let m;
+  if(m=wp(l,L[i+1]))ev.push(m);
+  else if(m=/km\s*[-–—_]?\s*(?:(\d+)\s*[a-z]{1,4}\s*)?([\dOo]{1,3})\s*min/i.exec(l)){const k=/(\d+(?:[.,]\d+)?)\s*km/i.exec(l);ev.push({t:'D',km:k?k[1].replace(',','.'):'',min:(+(m[1]||0))*60+ +m[2].replace(/[Oo]/g,'0')})}
+  else if(m=/Loop\s+ongeveer\D{0,3}(\d+)?\s*minu/i.exec(l))ev.push({t:'W',min:m[1]?+m[1]:null});
+  else if(m=/^(Sprinter|Intercity|Sneltrein|Stoptrein|Bus\s*\d+|Tram\s*\d+|Metro\s*\d+|Trein)\b.*?\bnaar\s+(.+)$/i.exec(l.replace(/^[^\p{L}\p{N}]+/u,'')))ev.push({t:'X',line:m[1],dir:m[2],board:prev});
+  else if(m=/(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})\s*\((\d+)\s*halte/i.exec(l))ev.push({t:'TM',dep:T(m[1],m[2]),arr:T(m[3],m[4]),n:+m[5]});
+  else if(m=/Stap\s+uit\s+bij\s+(?:station|halte):?\s*(.+)/i.exec(l))ev.push({t:'E',to:m[1]});
+  else if(m=/Vertrek\s+uiterlijk:?\s*(\d{1,2}):(\d{2})/i.exec(l))ev.push({t:'L',time:T(m[1],m[2])});
+  else if(m=/Rij\s+(\d+)\s*km,?\s*richting\s+(.+)/i.exec(l))ev.push({t:'C',km:m[1],dir:m[2]});
+  else if(m=/Geschatte\s+aankomst\w*:?\s*(\d{1,2}):(\d{2})/i.exec(l))ev.push({t:'S',time:T(m[1],m[2])});
+  prev=l});return ev}
+const best=(a,b)=>!a?b:!b?a:(b.time&&!a.time)||(b.addr.length>a.addr.length&&b.time)?b:a;
+function parseFleetport(text){const ev=events(text),legs=[];let cur=null,last=null;
+ const close=(w)=>{if(cur){cur.to=w||null;legs.push(cur);cur=null}};
+ for(let i=0;i<ev.length;i++){const e=ev[i];
+  if(e.t=='WP'){last=last&&last.pc==e.pc?best(last,e):e;continue}
+  if(e.t=='D'){if(cur)close(last);cur={from:last,km:e.km,min:e.min,ov:[],walk:[],car:null};last=null;continue}
+  if(!cur)continue;
+  if(e.t=='W')cur.walk.push(e.min);
+  if(e.t=='X')cur.ov.push({line:e.line,dir:e.dir,board:e.board});
+  if(e.t=='TM'&&cur.ov.length)Object.assign(cur.ov.at(-1),{dep:e.dep,arr:e.arr,n:e.n});
+  if(e.t=='E'&&cur.ov.length)cur.ov.at(-1).exit=e.to;
+  if(e.t=='L'){cur.car=cur.car||{};cur.car.latest=e.time}
+  if(e.t=='C'){cur.car=cur.car||{};cur.car.km=e.km;cur.car.dir=e.dir}
+  if(e.t=='S'){cur.car=cur.car||{};cur.car.est=e.time}}
+ if(cur){const lw=ev.length&&ev.at(-1).t=='WP'?last:null;cur.cut=!lw;close(lw)}
+ return legs.map(fin)}
+function fin(g){const car=!!g.car,f=g.from,t=g.to;
+ const o={type:car?'Auto':(g.ov.length||g.walk.length?'OV':''),from:f,to:t,km:g.km,min:g.min,ov:g.ov,walk:g.walk,car:g.car,cut:!!g.cut};
+ o.tStart=car?(g.car.latest||''):(f?.time||'');o.tEnd=car?(g.car.est||''):(t?.time||'');return o}
+function same(a,b){if(a.type&&b.type&&a.type!=b.type)return false;if(a.cut&&b.cut&&!a.type&&!b.type&&a.from&&b.from&&a.from.pc==b.from.pc)return true;
+ if(a.from&&b.from&&a.from.pc==b.from.pc)return true;if(!a.from&&!b.from&&a.to&&b.to&&a.to.pc==b.to.pc)return true;
+ if(a.type=='Auto'&&a.car?.est&&a.car.est==b.car?.est)return true;
+ const x=a.ov[0],y=b.ov[0];if(x&&y&&x.dep&&x.dep==y.dep&&x.board==y.board)return true;
+ if(a.type=='OV'&&a.tEnd&&a.tEnd==b.tEnd&&a.min==b.min)return true;return false}
+function merge(a,b){const r={...a};for(const k of['type','from','to','km','min','tStart','tEnd','car'])if(!r[k]&&b[k])r[k]=b[k];
+ if(b.ov.length>a.ov.length)r.ov=b.ov;if(b.walk.length>a.walk.length)r.walk=b.walk;
+ if(a.from&&b.from&&!a.from.time&&b.from.time)r.from=b.from;if(a.to&&b.to&&!a.to.time&&b.to.time)r.to=b.to;
+ r.cut=a.cut&&b.cut;return r}
+function mergeAll(lists){const out=[];lists.flat().forEach(l=>{const i=out.findIndex(o=>same(o,l));if(i<0)out.push(l);else out[i]=merge(out[i],l)});
+ const key=l=>mn(l.from?.time)??(mn(l.to?.time)!=null?mn(l.to.time)-(l.min||0):9999);return out.sort((a,b)=>key(a)-key(b))}
+
+const ad=w=>w?[w.addr,((w.pc?w.pc.slice(0,4)+' '+w.pc.slice(4):'')+' '+(w.city||'')).trim()].filter(Boolean).join(', '):'';
+function nt(l){const r=[];if(l.type=='Auto'){r.push(`Rij ${l.car.km||'?'} km richting ${l.car.dir||'?'}`);r.push(`Vertrek uiterlijk ${l.car.latest||'?'} · geschatte aankomst ${l.car.est||'?'}`)}
+ l.ov.forEach((o,i)=>{if(l.walk[i]!=null)r.push('Loop '+l.walk[i]+' min');r.push(`${o.board||'?'}: ${o.line} naar ${o.dir} ${o.dep||'?'}→${o.arr||'?'}${o.exit?' (uit bij '+o.exit+')':''}`)});
+ if(l.ov.length&&l.walk[l.ov.length]!=null)r.push('Loop '+l.walk[l.ov.length]+' min');if(l.km)r.push(`Fleetpoort: ${l.km} km, ${l.min} min`);return r.join('\n')}
+function toCand(l,raw){const o={id:uid(),src:'',raw,type:l.type,from:ad(l.from),to:ad(l.to),tStart:l.tStart,tEnd:l.tEnd,note:nt(l)};
+ o.flags=['type','from','to','tStart','tEnd'].filter(k=>!o[k]);if(l.cut&&!o.flags.includes('to'))o.flags.push('to');
+ o.key=[o.from,o.to,o.tStart].join('|');o.dup=S.j.some(j=>j.key==o.key)&&o.key!='||';return o}
+async function prep(f){const bm=await createImageBitmap(f),c=document.createElement('canvas');c.width=bm.width*1.5|0;c.height=bm.height*1.5|0;const x=c.getContext('2d');x.drawImage(bm,0,0,c.width,c.height);
+ const im=x.getImageData(0,0,c.width,c.height),d=im.data,h=new Array(256).fill(0),n=d.length/4;
+ for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2]|0;d[i]=d[i+1]=d[i+2]=g;h[g]++}
+ let lo=0,hi=255,s=0;for(;lo<255&&(s+=h[lo])<n*.02;lo++);s=0;for(;hi>0&&(s+=h[hi])<n*.02;hi--);const k=255/Math.max(1,hi-lo);
+ for(let i=0;i<d.length;i+=4){const v=Math.min(255,Math.max(0,(d[i]-lo)*k))<170?0:255;d[i]=d[i+1]=d[i+2]=v}x.putImageData(im,0,0);return c}
+$('#ocr').onclick=async()=>{const fs=[...$('#files').files];if(!fs.length)return;C=[];let lbl='',txt=[],lists=[];
+ try{const w=await Tesseract.createWorker('nld',1,{logger:m=>$('#prog').textContent=`${lbl}: ${m.status} ${Math.round((m.progress||0)*100)}%`});
+  await w.setParameters({tessedit_pageseg_mode:'6'});
+  for(const [n,f] of fs.entries()){lbl=`Screenshot ${n+1}/${fs.length}`;for(const src of [f,await prep(f)]){const r=await w.recognize(src);txt.push(r.data.text);lists.push(parseFleetport(r.data.text))}}
+  await w.terminate();const raw=txt.join('\n=====\n');mergeAll(lists).forEach(l=>C.push(toCand(l,raw)));
+  $('#prog').textContent=C.length?`Klaar: ${C.length} ritten herkend. Controleer alles hieronder.`:'Niets herkend; voeg handmatig toe.'}catch(e){$('#prog').textContent='OCR mislukt (internet nodig voor eerste keer): '+e.message}
+ cands()};
+$('#man').onclick=()=>{C.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:'',raw:'',flags:[]});cands()};
+function cands(){$('#cands').innerHTML=C.map((c,i)=>`<div class="card"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ck${i}" ${c.dup?'':'checked'}> Toevoegen ${c.dup?'<b class="w">⚠ mogelijk dubbel</b>':''}</label>${form(c,'c',i)}<details><summary>Originele OCR-tekst (${esc(c.src||'')})</summary><pre>${esc(c.raw)}</pre></details></div>`).join('')+(C.length?'<button style="width:100%" onclick="addSel()">Toevoegen aan vandaag</button>':'')}
+function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),type:c.type,from:c.from,to:c.to,tStart:c.tStart,tEnd:c.tEnd,note:c.note,raw:c.raw,key:c.key})});C=[];save();cands();go('now')}
+
+const SET=()=>`<h2>Planner</h2><div class="card"><label>Planner-adres (nu: https://api.transitous.org)<input value="${esc(S.cfg.url||'')}" oninput="S.cfg.url=this.value.trim();save()"></label><label>Thuisadres (alleen op deze telefoon bewaard)<input value="${esc(S.cfg.home||'')}" oninput="S.cfg.home=this.value.trim();save()"></label><label>Apps Script-link (de /exec-link, zonder token)<input value="${esc(S.cfg.mail||'')}" oninput="S.cfg.mail=this.value.trim();save()"></label><label>Gebruikersnaam<input id="lu" autocomplete="username"></label><label>Wachtwoord<input id="lp" type="password" autocomplete="current-password"></label><button class="g" style="width:100%;margin-top:8px" onclick="login()">Inloggen</button><p id="lg" class="m">${S.cfg.sess?'Ingelogd op dit apparaat.':'Niet ingelogd.'}</p><label>Rijtijd-factor (1.2 = 20% erbij t.o.v. OSRM)<input inputmode="decimal" value="${esc(S.cfg.carf||'1.2')}" oninput="S.cfg.carf=this.value.trim();save()"></label><label>Fleetpoort-locaties (postcodes of adresdelen, met komma's; ophalen/afleveren daar 5 min)<input value="${esc(S.cfg.fp||'')}" oninput="S.cfg.fp=this.value.trim();save()"></label><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" ${S.cfg.demo?'checked':''} onchange="S.cfg.demo=this.checked;save()"> Demo-modus (GESIMULEERDE data)</label><button class="g" style="width:100%;margin-top:8px" onclick="ptest()">Test planner</button><p id="pt" class="m"></p></div>`;
+const api=async p=>{const r=await fetch((S.cfg.url||'')+p);if(!r.ok)throw Error('Planner antwoordde '+r.status);return r.json()};
+async function geo(a){S.geo=S.geo||{};if(S.geo[a])return S.geo[a];const r=await api('/api/v1/geocode?text='+encodeURIComponent(a)),x=(Array.isArray(r)?r:r.results||[])[0];if(!x)throw Error('Adres niet gevonden: '+a);const v=x.lat+','+(x.lon??x.lng);S.geo[a]=v;(S.geoN=S.geoN||{})[a]=x.name||'';save();return v}
+const dlDate=s=>{const m=mn(s);if(m==null)return null;const d=new Date();d.setHours(0,m,0,0);return d};
+const tm=t=>t?new Date(t).toTimeString().slice(0,5):'';
+const ML={WALK:'Lopen',BUS:'Bus',TRAM:'Tram',SUBWAY:'Metro',RAIL:'Trein',REGIONAL_RAIL:'Trein',HIGHSPEED_RAIL:'Trein',LONG_DISTANCE:'Trein',NIGHT_RAIL:'Trein',FERRY:'Veer'};
+function demo(ref,ab){const m=6e4,e=ab?ref:new Date(+ref+75*m),s=new Date(+e-75*m),T=a=>new Date(+s+a*m).toISOString();
+ const mk=o=>({startTime:T(o.a),endTime:T(o.b),scheduledStartTime:T(o.a-(o.d||0)),mode:o.m,routeShortName:o.n,headsign:o.h,realTime:!!o.d,duration:(o.b-o.a)*60});
+ return{sim:true,itineraries:[{startTime:T(0),endTime:T(75),transfers:1,legs:[mk({a:0,b:8,m:'WALK'}),mk({a:8,b:40,m:'REGIONAL_RAIL',n:'Sprinter',h:"'s-Hertogenbosch",d:4}),mk({a:44,b:70,m:'RAIL',n:'Intercity',h:'Maastricht'}),mk({a:70,b:75,m:'WALK'})]}]}}
+async function plan(id){const s=steps().find(x=>x.id==id),j=s.j,box=$('#pl-'+id),now=new Date(),dl=dlDate(j.tEnd),ab=!!(dl&&now<dlDate(j.tStart||j.tEnd)),ref=ab?dl:now;box.innerHTML='<p class="m">Zoeken…</p>';
+ try{let res,dbg='';if(S.cfg.demo)res=demo(ref,ab);else{const [f,t]=await Promise.all([geo(j.from),geo(j.to)]);const q=`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(ref.toISOString())}&arriveBy=${ab}&numItineraries=4`;try{res=await api(q+'&maxPreTransitTime=1800&maxPostTransitTime=1800')}catch(e){res=await api(q)}
+  dbg=`Gezocht: ${(S.geoN||{})[j.from]||j.from} → ${(S.geoN||{})[j.to]||j.to} (${f} → ${t}), ${ab?'aankomst voor':'vertrek na'} ${tm(ref)}`}
+  const its=res.itineraries||[];if(!its.length){box.innerHTML='<p class="m">Geen reisopties gevonden.<br>'+esc(dbg)+'</p>';return}
+  const dm=l=>l.realTime&&l.scheduledStartTime?Math.round((new Date(l.startTime)-new Date(l.scheduledStartTime))/6e4):0;
+  const txt=i=>i.legs.map(l=>l.mode=='WALK'?'Lopen '+Math.max(1,Math.round((l.duration||0)/60))+' min':`${ML[l.mode]||l.mode} ${l.routeShortName||''} → ${l.headsign||''} ${tm(l.startTime)}→${tm(l.endTime)}${dm(l)>=1?` (+${dm(l)} min live)`:''}`).join('\n');
+  window.PL=its.map(i=>({t:txt(i),sim:!!res.sim}));
+  box.innerHTML=(res.sim?'<p class="w"><b>GESIMULEERD, geen echte data</b></p>':'')+(ab?'':'<p class="m">Je bent later dan gepland: zoeken vanaf nu.</p>')+its.map((i,k)=>{const late=dl?Math.round((new Date(i.endTime)-dl)/6e4):null;return`<div class="card"><b>${tm(i.startTime)} → ${tm(i.endTime)}</b> · ${i.transfers} overstap(pen)${late==null?'':late>0?` · <span class="w">${late} min te laat</span>`:` · op tijd (${-late} min marge)`}<div class="m" style="white-space:pre-line">${esc(PL[k].t)}</div><button style="width:100%;margin-top:8px" onclick="pick('${id}',${k})">Kies deze</button></div>`}).join('')}
+ catch(e){box.innerHTML=`<p class="w">Planner niet bereikbaar of fout: ${esc(e.message)}</p>`}}
+function pick(id,k){const p=PL[k];S.s[id].route=(p.sim?'[GESIMULEERD] ':'')+'gekozen '+hm(Date.now())+'\n'+p.t;save();render()}
+async function ptest(){const o=$('#pt');if(S.cfg.demo){o.textContent='Demo-modus staat aan (gesimuleerd).';return}
+ try{const r=await api('/api/v5/plan?fromPlace=51.8118,5.2517&toPlace=51.4433,5.4812&time='+encodeURIComponent(new Date(Date.now()+36e5).toISOString())+'&numItineraries=1');o.textContent='Planner werkt: '+(r.itineraries||[]).length+' reisoptie(s) gevonden.'}catch(e){o.textContent='Mislukt: '+e.message}}
+
+const isFP=(a,f)=>!!f||String(S.cfg.fp||'').split(',').map(x=>x.trim().toLowerCase().replace(/\s/g,'')).filter(Boolean).some(x=>String(a).toLowerCase().replace(/\s/g,'').includes(x));
+const ld=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const atTime=(d,t)=>{const [y,m,x]=d.split('-').map(Number),[H,M]=t.split(':').map(Number);return new Date(y,m-1,x,H,M)};
+const itxt=i=>i.legs.map(l=>{const dl=l.realTime&&l.scheduledStartTime?Math.round((new Date(l.startTime)-new Date(l.scheduledStartTime))/6e4):0;return l.mode=='WALK'?'Lopen '+Math.max(1,Math.round((l.duration||0)/60))+' min':`${ML[l.mode]||l.mode} ${l.routeShortName||''} → ${l.headsign||''} ${tm(l.startTime)}→${tm(l.endTime)}${dl>=1?` (+${dl} min live)`:''}`}).join('\n');
+async function ovPlan(from,to,at){const [f,t]=await Promise.all([geo(from),geo(to)]);const q=`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(at.toISOString())}&arriveBy=false&numItineraries=3`;let r;try{r=await api(q+'&maxPreTransitTime=1800&maxPostTransitTime=1800')}catch(e){r=await api(q)}
+ const its=(r.itineraries||[]).slice().sort((a,b)=>new Date(a.endTime)-new Date(b.endTime));if(!its.length)throw Error('geen OV-route gevonden');return its[0]}
+async function carMin(a,b){const [f,t]=await Promise.all([geo(a),geo(b)]),sw=x=>x.split(',').reverse().join(','),r=await(await fetch(`https://router.project-osrm.org/route/v1/driving/${sw(f)};${sw(t)}?overview=false`)).json();if(!r.routes||!r.routes.length)throw Error('geen autoroute');return Math.round(r.routes[0].duration/60*(parseFloat(S.cfg.carf)||1.2))}
+async function buildDay(jobs){const mm=6e4,out=[],home=S.cfg.home;if(!home)throw Error('vul eerst je thuisadres in (Journeys → Planner)');
+ let t=atTime(jobs[0].date,jobs[0].depart),prev=home,ok=true;
+ const ov=async(from,to)=>{const l={type:'OV',from,to,tStart:'',tEnd:'',note:''};if(ok){try{const it=await ovPlan(from,to,t);l.tStart=tm(it.startTime);l.tEnd=tm(it.endTime);l.note=itxt(it);t=new Date(it.endTime)}catch(e){ok=false;l.note='Niet berekend: '+e.message+'. Volgende stappen hebben daardoor geen tijden.'}}else l.note='Niet berekend (vorige stap mislukt).';out.push(l)};
+ for(const j of jobs){await ov(prev,j.pickup);
+  const c={type:'Auto',from:j.pickup,to:j.delivery,tStart:'',tEnd:'',note:`Opdracht ${j.id} (${j.plate}), venster ${j.wFrom}–${j.wTo}`+(j.info?'\n'+j.info:'')};
+  if(ok){try{const hp=isFP(j.pickup,j.pickupFP)?5:12,hd=isFP(j.delivery,j.deliveryFP)?5:12,dep=new Date(+t+hp*mm),min=await carMin(j.pickup,j.delivery),arr=new Date(+dep+min*mm);c.tStart=tm(dep);c.tEnd=tm(arr);c.note+=`\nRijtijd ±${min} min (schatting, geen live verkeer) · ophalen ${hp} min${hp==5?' (Fleetpoort-locatie)':''}, afleveren ${hd} min${hd==5?' (Fleetpoort-locatie)':''}`;if(dep<atTime(j.date,j.wFrom))c.note+='\n⚠ Vertrek vóór het begin van het venster';t=new Date(+arr+hd*mm)}catch(e){ok=false;c.note+='\nNiet berekend: '+e.message}}
+  out.push(c);prev=j.delivery}
+ await ov(prev,home);return out}
+async function loadMail(){const o=$('#mst');try{if(!S.cfg.mail)throw Error('vul eerst de Gmail-koppeling in (Journeys → Planner)');o.textContent='Mails ophalen…';
+ const r=await gas('mail');const all=(r.jobs||[]).filter(j=>!j.error&&j.date&&j.depart),days=[...new Set(all.map(j=>j.date))].sort(),d=days.find(x=>x>=ld())||days[days.length-1],jobs=all.filter(j=>j.date==d);if(!jobs.length)throw Error('geen opdrachten gevonden');
+ o.textContent=`${jobs.length} opdracht(en) voor ${d}; route berekenen…`;const legs=await buildDay(jobs);
+ C=legs.map(l=>({id:uid(),src:'mail',raw:'',...l,key:[l.from,l.to,l.tStart].join('|'),flags:['from','to','tStart','tEnd'].filter(k=>!l[k]),dup:false}));
+ o.textContent=`Klaar: ${legs.length} stappen voor ${d}. Controleer hieronder en voeg toe.`}catch(e){o.textContent='Mislukt: '+e.message}cands()}
+$('#mailbtn').onclick=loadMail;
+const dnum=s=>parseFloat(String(s).replace(',','.'))||0;
+const pm=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(t).trim());return m?+m[1]*60+ +m[2]:null};
+const pdate=s=>{const [d,m,y]=String(s).split('-').map(Number);return new Date(y,m-1,d)};
+const f1=x=>(Math.round(x*10)/10).toString().replace('.',',');
+const MN=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'],DN=['Zondag','Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag'];
+function stats(rows){
+ const s=rows.map(r=>{const b=pm(r[1]),e=pm(r[2]);if(b==null||e==null)return null;const v=pm(r[5]),t=pm(r[6]),dl=dnum(r[7]),pz=dnum(r[10]);return{ds:r[0],d:pdate(r[0]),b,e,w:(e-b)/60,p:v!=null&&t!=null?(t-v+dl-pz)/60:null,dl,pz}}).filter(Boolean).sort((a,b)=>a.d-b.d);
+ const n=s.length;if(!n)return null;const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0),W=sum(s,x=>x.w),P=sum(s,x=>x.p||0);
+ const lg=s.reduce((a,x)=>x.w>a.w?x:a),sh=s.reduce((a,x)=>x.w<a.w?x:a),dls=s.filter(x=>x.dl>0);
+ const hm2=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(Math.floor(m%60)).padStart(2,'0');
+ const months=[];for(let d=new Date(s[0].d.getFullYear(),s[0].d.getMonth(),1);d<=s[n-1].d;d=new Date(d.getFullYear(),d.getMonth()+1,1)){const a=s.filter(x=>x.d.getFullYear()==d.getFullYear()&&x.d.getMonth()==d.getMonth());months.push({l:MN[d.getMonth()]+' '+d.getFullYear(),n:a.length,w:sum(a,x=>x.w),p:sum(a,x=>x.p||0)})}
+ const wd=[1,2,3,4,5,6,0].map(k=>{const a=s.filter(x=>x.d.getDay()==k);return{l:DN[k],n:a.length,w:sum(a,x=>x.w)}});
+ const bk=[[0,4,'Tot 4 uur'],[4,6,'4 tot 6 uur'],[6,8,'6 tot 8 uur'],[8,99,'8 uur of langer']].map(([a,b,l])=>({l,n:s.filter(x=>x.w>=a&&x.w<b).length}));
+ return{n,first:s[0].ds,last:s[n-1].ds,W,P,avg:W/n,lg,sh,ab:hm2(sum(s,x=>x.b)/n),ae:hm2(sum(s,x=>x.e)/n),pc:s.filter(x=>x.pz>0).length,pm:sum(s,x=>x.pz),ad:dls.length?sum(dls,x=>x.dl)/dls.length:0,months,wd,bk}}
+
+async function gas(action){if(!S.cfg.mail)throw Error('vul eerst de Apps Script-link in (Journeys → Planner)');const u=S.cfg.mail+(S.cfg.mail.includes('?')?'&':'?')+'action='+action+'&s='+encodeURIComponent(S.cfg.sess||'');const r=await(await fetch(u)).json();if(r.error=='login')throw Error('niet ingelogd: log in via Journeys → Planner');if(r.error)throw Error(r.error);return r}
+async function login(){const o=$('#lg');try{if(!S.cfg.mail)throw Error('vul eerst de Apps Script-link in');const r=await(await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'login',user:$('#lu').value,pass:$('#lp').value})})).json();if(r.error)throw Error(r.error);S.cfg.sess=r.session;save();$('#lp').value='';o.textContent='Ingelogd op dit apparaat.'}catch(e){o.textContent='Mislukt: '+e.message}}
+async function ovLoad(){try{S.ovmsg='Laden…';render();const r=await gas('uren');S.ovrows=r.rows;S.ovmsg='Bijgewerkt '+new Date().toLocaleString('nl-NL');save()}catch(e){S.ovmsg='Mislukt: '+e.message}render()}
+function ovPage(){const t=stats(S.ovrows||[]);const bar=(l,v,mx,txt)=>`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:84px;font-size:13px">${esc(l)}</span><div style="flex:1"><div style="background:var(--a);height:14px;border-radius:4px;width:${mx?Math.round(v/mx*100):0}%"></div></div><span style="width:78px;text-align:right;font-size:13px">${txt}</span></div>`;
+ const kv=(a,b)=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--b)"><span class="m">${a}</span><b>${b}</b></div>`;
+ let o=`<div class="card"><button style="width:100%" onclick="ovLoad()">Overzicht verversen</button><p class="m">${esc(S.ovmsg||'Nog niet geladen.')}</p></div>`;if(!t)return o;
+ const mxm=Math.max(...t.months.map(m=>m.w)),mxw=Math.max(...t.wd.map(m=>m.w)),mxb=Math.max(...t.bk.map(m=>m.n));
+ return o+`<div class="card"><div class="big">Overzicht werktijden</div>`+kv('Eerste dienst',t.first)+kv('Laatste dienst',t.last)+kv('Aantal diensten',t.n)+kv('Totaal gewerkte uren',f1(t.W))+kv('Totaal betaalde uren',f1(t.P))+kv('Betaald min gewerkt (uren)',f1(t.P-t.W))+kv('Gemiddeld per dienst (uren)',f1(t.avg))+kv('Langste dienst (uren)',f1(t.lg.w)+' op '+t.lg.ds)+kv('Kortste dienst (uren)',f1(t.sh.w))+kv('Gemiddelde begintijd',t.ab)+kv('Gemiddelde eindtijd',t.ae)+kv('Diensten met pauzeaftrek',t.pc)+kv('Totaal pauzeminuten',t.pm)+kv('Gem. vertraging (min, alleen met vertraging)',Math.round(t.ad))+`</div>
+ <div class="card"><b>Per maand (gewerkte uren)</b>${t.months.map(m=>bar(m.l,m.w,mxm,f1(m.w)+' · '+m.n+'×')).join('')}</div>
+ <div class="card"><b>Per weekdag (gewerkte uren)</b>${t.wd.map(m=>bar(m.l,m.w,mxw,f1(m.w)+' · '+m.n+'×')).join('')}</div>
+ <div class="card"><b>Dienstduur (aantal diensten)</b>${t.bk.map(b=>bar(b.l,b.n,mxb,b.n)).join('')}</div>`}
+render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
