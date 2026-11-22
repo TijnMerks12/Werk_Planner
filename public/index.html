@@ -203,7 +203,8 @@ async function buildDay(jobs){const mm=6e4,out=[],home=S.cfg.home;if(!home)throw
  let t=atTime(jobs[0].date,jobs[0].depart),prev=home,ok=true;
  const ov=async(from,to)=>{const l={type:'OV',from,to,tStart:'',tEnd:'',note:''};if(ok){try{const it=await ovPlan(from,to,t);l.tStart=tm(it.startTime);l.tEnd=tm(it.endTime);l.note=itxt(it);t=new Date(it.endTime)}catch(e){ok=false;l.note='Niet berekend: '+e.message+'. Volgende stappen hebben daardoor geen tijden.'}}else l.note='Niet berekend (vorige stap mislukt).';out.push(l)};
  for(const j of jobs){await ov(prev,j.pickup);
-  const c={type:'Auto',from:j.pickup,to:j.delivery,tStart:'',tEnd:'',note:`Opdracht ${j.id} (${j.plate}), venster ${j.wFrom}–${j.wTo}`+(j.info?'\n'+j.info:'')};
+  const tg=[[/was(sen|straat|serette)|carwash/i,'Wassen'],[/tanken/i,'Tanken'],[/opladen|laden/i,'Opladen'],[/stofzuig/i,'Stofzuigen']].filter(([r])=>r.test(j.info||'')).map(x=>x[1]);
+  const c={type:'Auto',from:j.pickup,to:j.delivery,tStart:'',tEnd:'',note:(tg.length?'⚠ '+tg.join(' · ')+'\n':'')+`Opdracht ${j.plate}, venster ${j.wFrom}–${j.wTo}`+(j.info?'\n\nINSTRUCTIES:\n'+j.info:'')};
   if(ok){try{const hp=isFP(j.pickup,j.pickupFP)?5:12,hd=isFP(j.delivery,j.deliveryFP)?5:12,dep=new Date(+t+hp*mm),min=await carMin(j.pickup,j.delivery),arr=new Date(+dep+min*mm);c.tStart=tm(dep);c.tEnd=tm(arr);c.note+=`\nRijtijd ±${min} min (schatting, geen live verkeer) · ophalen ${hp} min${hp==5?' (Fleetpoort-locatie)':''}, afleveren ${hd} min${hd==5?' (Fleetpoort-locatie)':''}`;if(dep<atTime(j.date,j.wFrom))c.note+='\n⚠ Vertrek vóór het begin van het venster';t=new Date(+arr+hd*mm)}catch(e){ok=false;c.note+='\nNiet berekend: '+e.message}}
   out.push(c);prev=j.delivery}
  await ov(prev,home);return out}
