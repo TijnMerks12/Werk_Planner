@@ -16,6 +16,27 @@ input,button{width:100%;box-sizing:border-box;font:inherit;padding:14px;border-r
 <body><form method="POST" action="/__login"><b>Werk Planner</b><input type="password" name="p" placeholder="Wachtwoord" autocomplete="current-password" autofocus required><button>Inloggen</button>${msg ? '<p>' + msg + '</p>' : ''}</form></body></html>`,
   { status: 401, headers: { 'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store' } });
 
+// Autorijtijd met verkeer via Google Routes API. Alleen bereikbaar na inloggen; GOOGLE_KEY staat als geheim in Cloudflare.
+async function route(url, env) {
+  const j = (o, st = 200) => new Response(JSON.stringify(o), { status: st, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  if (!env.GOOGLE_KEY) return j({ error: 'geen sleutel' }, 404);
+  const ll = (v) => { const [a, b] = String(v || '').split(',').map(Number); return (isFinite(a) && isFinite(b)) ? { location: { latLng: { latitude: a, longitude: b } } } : null; };
+  const o = ll(url.searchParams.get('from')), d = ll(url.searchParams.get('to'));
+  if (!o || !d) return j({ error: 'ongeldige coördinaten' }, 400);
+  const body = { origin: o, destination: d, travelMode: 'DRIVE', routingPreference: 'TRAFFIC_AWARE' };
+  const t = new Date(url.searchParams.get('t') || '');
+  if (t.getTime() > Date.now() + 120000) body.departureTime = t.toISOString();   // alleen toekomstige tijden toegestaan
+  const r = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_KEY, 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
+    body: JSON.stringify(body)
+  });
+  const x = await r.json().catch(() => ({}));
+  const sec = parseInt((x.routes && x.routes[0] && x.routes[0].duration) || '');
+  if (!r.ok || !isFinite(sec)) return j({ error: (x.error && x.error.message) || 'Google gaf geen route', status: r.status }, 502);
+  return j({ min: Math.round(sec / 60), km: Math.round((x.routes[0].distanceMeters || 0) / 100) / 10 });
+}
+
 async function handle(request, env) {
   const next = () => env.ASSETS.fetch(request);
   if (!env.SITE_PASSWORD) return new Response('SITE_PASSWORD ontbreekt in de instellingen van Cloudflare.', { status: 500 });
@@ -24,7 +45,7 @@ async function handle(request, env) {
   const jar = {};
   (request.headers.get('Cookie') || '').split(/;\s*/).forEach(c => { const i = c.indexOf('='); if (i > 0) jar[c.slice(0, i)] = c.slice(i + 1); });
   const [exp, sig] = (jar[COOKIE] || '').split('.');
-  if (exp && sig && Number(exp) > Date.now() && same(sig, await sign(exp, env.SITE_PASSWORD))) return next();
+  if (exp && sig && Number(exp) > Date.now() && same(sig, await sign(exp, env.SITE_PASSWORD))) return url.pathname === '/api/route' ? route(url, env) : next();
   if (request.method === 'POST' && url.pathname === '/__login') {
     const f = await request.formData(), given = String(f.get('p') || '');
     if (same(await sign('x', given), await sign('x', env.SITE_PASSWORD))) {

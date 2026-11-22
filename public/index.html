@@ -68,7 +68,7 @@ function act(id,a){const s=steps().find(x=>x.id==id),r=S.s[id];
  if(a=='skip'){r.st='overgeslagen';S.f=null}
  if(a=='delay'){const m=parseInt(prompt('Hoeveel minuten vertraging?'),10);if(isNaN(m))return;r.delay=m;r.cause=prompt('Oorzaak (bijv. trein 15 min te laat)?')||'';if(r.st!='bezig')r.st='vertraagd'}
  if(a=='reset'){S.s[id]={st:'todo'}}
- save();render()}
+ save();render();if(a=='done')setTimeout(recalc,0)}
 function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(open);
  let h='';if(!st.length)h='<div class="card">Nog geen Journeys. Ga naar <b>Upload</b> of voeg handmatig toe.</div>';
  else{if(cur){const r=cur.r;h+=`<div class="card ${r.st}"><div class="m">Stap ${cur.n} van ${st.length} · ${esc(cur.k)}</div><div class="big">${esc(cur.t)}</div>
@@ -79,7 +79,7 @@ function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(o
  ${cur.k=='OV'?`<div class="row"><button onclick="plan('${cur.id}')">Route zoeken</button></div>`:''}<div id="pl-${cur.id}"></div></div>`}
  else h+='<div class="card big">Alle stappen afgerond 🎉 Bekijk het Rapport.</div>';
  h+='<h2>Tijdlijn</h2>'+st.map(s=>`<div class="card ${s.r.st}" onclick="S.f='${s.id}';render()"><span class="chip">${s.r.st}</span> <b>${s.n}.</b> ${esc(s.t)}<div class="m">${s.r.end?'klaar '+hm(s.r.end):''}${' · '+esc(s.j.tStart||'?')+'→'+esc(s.j.tEnd||'?')}</div></div>`).join('')}
- $('#v-now').innerHTML=h;
+ $('#v-now').innerHTML=clockHTML()+h;
  $('#v-j').innerHTML=S.j.map((j,i)=>`<div class="card"><b>Journey ${i+1}</b>${form(j,'j',i)}${j.raw?`<details><summary>Originele OCR-tekst</summary><pre>${esc(j.raw)}</pre></details>`:''}<div class="row"><button class="g" onclick="mv(${i},-1)">↑</button><button class="g" onclick="mv(${i},1)">↓</button><button class="r" onclick="if(confirm('Verwijderen?')){S.j.splice(${i},1);save();render()}">Verwijder</button></div></div>`).join('')+`<div class="row"><button class="g" onclick="S.j.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:''});save();render()">+ Journey</button><button class="r" onclick="newDay()">Nieuwe dag</button></div><p class="m">Volgorde wijzig je alleen zelf (↑ ↓). De app herordent nooit zelf.</p>${SET()}`;
  rep(st);$('#v-ov').innerHTML=ovPage()}
 const mv=(i,d)=>{const j=i+d;if(j<0||j>=S.j.length)return;[S.j[i],S.j[j]]=[S.j[j],S.j[i]];save();render()};
@@ -168,9 +168,9 @@ $('#ocr').onclick=async()=>{const fs=[...$('#files').files];if(!fs.length)return
  cands()};
 $('#man').onclick=()=>{C.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:'',raw:'',flags:[]});cands()};
 function cands(){$('#cands').innerHTML=C.map((c,i)=>`<div class="card"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ck${i}" ${c.dup?'':'checked'}> Toevoegen ${c.dup?'<b class="w">⚠ mogelijk dubbel</b>':''}</label>${form(c,'c',i)}<details><summary>Originele OCR-tekst (${esc(c.src||'')})</summary><pre>${esc(c.raw)}</pre></details></div>`).join('')+(C.length?'<button style="width:100%" onclick="addSel()">Toevoegen aan vandaag</button>':'')}
-function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),type:c.type,from:c.from,to:c.to,tStart:c.tStart,tEnd:c.tEnd,note:c.note,raw:c.raw,key:c.key})});C=[];save();cands();go('now')}
+function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),type:c.type,from:c.from,to:c.to,tStart:c.tStart,tEnd:c.tEnd,note:c.note,raw:c.raw,key:c.key,h:c.h,d:c.d})});C=[];save();cands();go('now')}
 
-const SET=()=>`<h2>Planner</h2><div class="card"><label>Planner-adres (nu: https://api.transitous.org)<input value="${esc(S.cfg.url||'')}" oninput="S.cfg.url=this.value.trim();save()"></label><label>Thuisadres (alleen op deze telefoon bewaard)<input value="${esc(S.cfg.home||'')}" oninput="S.cfg.home=this.value.trim();save()"></label><label>Apps Script-link (de /exec-link, zonder token)<input value="${esc(S.cfg.mail||'')}" oninput="S.cfg.mail=this.value.trim();save()"></label><label>Gebruikersnaam<input id="lu" autocomplete="username"></label><label>Wachtwoord<input id="lp" type="password" autocomplete="current-password"></label><button class="g" style="width:100%;margin-top:8px" onclick="login()">Inloggen</button><p id="lg" class="m">${S.cfg.sess?'Ingelogd op dit apparaat.':'Niet ingelogd.'}</p><label>Rijtijd-factor (1.2 = 20% erbij t.o.v. OSRM)<input inputmode="decimal" value="${esc(S.cfg.carf||'1.2')}" oninput="S.cfg.carf=this.value.trim();save()"></label><label>Fleetpoort-locaties (postcodes of adresdelen, met komma's; ophalen/afleveren daar 5 min)<input value="${esc(S.cfg.fp||'')}" oninput="S.cfg.fp=this.value.trim();save()"></label><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" ${S.cfg.demo?'checked':''} onchange="S.cfg.demo=this.checked;save()"> Demo-modus (GESIMULEERDE data)</label><button class="g" style="width:100%;margin-top:8px" onclick="ptest()">Test planner</button><p id="pt" class="m"></p></div>`;
+const SET=()=>`<h2>Planner</h2><div class="card"><label>Planner-adres (nu: https://api.transitous.org)<input value="${esc(S.cfg.url||'')}" oninput="S.cfg.url=this.value.trim();save()"></label><label>Thuisadres (alleen op deze telefoon bewaard)<input value="${esc(S.cfg.home||'')}" oninput="S.cfg.home=this.value.trim();save()"></label><label>Apps Script-link (de /exec-link, zonder token)<input value="${esc(S.cfg.mail||'')}" oninput="S.cfg.mail=this.value.trim();save()"></label><label>Gebruikersnaam<input id="lu" autocomplete="username"></label><label>Wachtwoord<input id="lp" type="password" autocomplete="current-password"></label><button class="g" style="width:100%;margin-top:8px" onclick="login()">Inloggen</button><p id="lg" class="m">${S.cfg.sess?'Ingelogd op dit apparaat.':'Niet ingelogd.'}</p><label>Rijtijd-factor voor OSRM (1.0 = geen toeslag; geldt niet voor Google)<input inputmode="decimal" value="${esc(S.cfg.carf||'1.0')}" oninput="S.cfg.carf=this.value.trim();save()"></label><label>Fleetpoort-locaties (postcodes of adresdelen, met komma's; ophalen/afleveren daar 5 min)<input value="${esc(S.cfg.fp||'')}" oninput="S.cfg.fp=this.value.trim();save()"></label><label>Haasten loont vanaf (minuten eerder klaar)<input inputmode="numeric" value="${esc(S.cfg.thr||'10')}" oninput="S.cfg.thr=this.value.trim();save()"></label><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" ${S.cfg.demo?'checked':''} onchange="S.cfg.demo=this.checked;save()"> Demo-modus (GESIMULEERDE data)</label><button class="g" style="width:100%;margin-top:8px" onclick="ptest()">Test planner</button><p id="pt" class="m"></p></div>`;
 const api=async p=>{const r=await fetch((S.cfg.url||'')+p);if(!r.ok)throw Error('Planner antwoordde '+r.status);return r.json()};
 async function geoPDOK(a,adr){const r=await(await fetch('https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?rows=1&fl=weergavenaam,centroide_ll'+(adr?'&fq=type:adres':'')+'&q='+encodeURIComponent(a))).json(),d=r.response&&r.response.docs&&r.response.docs[0],m=d&&/POINT\(([\d.\-]+) ([\d.\-]+)\)/.exec(d.centroide_ll||'');return m?{ll:m[2]+','+m[1],name:d.weergavenaam}:null}
 async function geo(a){S.geo2=S.geo2||{};S.geoN=S.geoN||{};if(S.geo2[a])return S.geo2[a];let g=null;try{g=await geoPDOK(a,true)||await geoPDOK(a,false)}catch(e){}
@@ -199,18 +199,20 @@ const isFP=(a,f)=>!!f||String(S.cfg.fp||'').split(',').map(x=>x.trim().toLowerCa
 const ld=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const atTime=(d,t)=>{const [y,m,x]=d.split('-').map(Number),[H,M]=t.split(':').map(Number);return new Date(y,m-1,x,H,M)};
 const itxt=i=>i.legs.map(l=>{const dl=l.realTime&&l.scheduledStartTime?Math.round((new Date(l.startTime)-new Date(l.scheduledStartTime))/6e4):0;return l.mode=='WALK'?'Lopen '+Math.max(1,Math.round((l.duration||0)/60))+' min':`${ML[l.mode]||l.mode} ${l.routeShortName||''} → ${l.headsign||''} ${tm(l.startTime)}→${tm(l.endTime)}${dl>=1?` (+${dl} min live)`:''}`}).join('\n');
-async function ovPlan(from,to,at){const [f,t]=await Promise.all([geo(from),geo(to)]);const q=`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(at.toISOString())}&arriveBy=false&numItineraries=3`;let r;try{r=await api(q+'&maxPreTransitTime=1800&maxPostTransitTime=1800')}catch(e){r=await api(q)}
+async function ovPlan(from,to,at,speed){const [f,t]=await Promise.all([geo(from),geo(to)]);const q=`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(at.toISOString())}&arriveBy=false&numItineraries=3${speed?'&pedestrianSpeed='+speed:''}`;let r;try{r=await api(q+'&maxPreTransitTime=1800&maxPostTransitTime=1800')}catch(e){r=await api(q)}
  const its=(r.itineraries||[]).slice().sort((a,b)=>new Date(a.endTime)-new Date(b.endTime));if(!its.length)throw Error('geen OV-route gevonden');return its[0]}
-async function carMin(a,b){const [f,t]=await Promise.all([geo(a),geo(b)]),sw=x=>x.split(',').reverse().join(','),r=await(await fetch(`https://router.project-osrm.org/route/v1/driving/${sw(f)};${sw(t)}?overview=false`)).json();if(!r.routes||!r.routes.length)throw Error('geen autoroute');return Math.round(r.routes[0].duration/60*(parseFloat(S.cfg.carf)||1.2))}
+async function carMin(a,b,dep){const [f,t]=await Promise.all([geo(a),geo(b)]);
+ try{const r=await fetch(`/api/route?from=${f}&to=${t}&t=${encodeURIComponent(dep.toISOString())}`);if(r.ok){const j=await r.json();if(j.min!=null)return{min:j.min,src:'Google'}}}catch(e){}
+ const sw=x=>x.split(',').reverse().join(','),r=await(await fetch(`https://router.project-osrm.org/route/v1/driving/${sw(f)};${sw(t)}?overview=false`)).json();if(!r.routes||!r.routes.length)throw Error('geen autoroute');return{min:Math.round(r.routes[0].duration/60*(parseFloat(S.cfg.carf)||1)),src:'OSRM'}}
 async function buildDay(jobs){const mm=6e4,out=[],home=S.cfg.home;if(!home)throw Error('vul eerst je thuisadres in (Journeys → Planner)');
  let t=atTime(jobs[0].date,jobs[0].depart),prev=home,ok=true;
  const ov=async(from,to)=>{const l={type:'OV',from,to,tStart:'',tEnd:'',note:''};if(ok){try{const it=await ovPlan(from,to,t);l.tStart=tm(it.startTime);l.tEnd=tm(it.endTime);l.note=itxt(it)+`\n(zoekpunten: ${(S.geoN||{})[from]||from} → ${(S.geoN||{})[to]||to})`;t=new Date(it.endTime)}catch(e){ok=false;l.note='Niet berekend: '+e.message+'. Volgende stappen hebben daardoor geen tijden.'}}else l.note='Niet berekend (vorige stap mislukt).';out.push(l)};
  for(const j of jobs){await ov(prev,j.pickup);
   const tg=[[/was(sen|straat|serette)|carwash/i,'Wassen'],[/tanken/i,'Tanken'],[/opladen|laden/i,'Opladen'],[/stofzuig/i,'Stofzuigen']].filter(([r])=>r.test(j.info||'')).map(x=>x[1]);
   const c={type:'Auto',from:j.pickup,to:j.delivery,tStart:'',tEnd:'',note:(tg.length?'⚠ '+tg.join(' · ')+'\n':'')+`Opdracht ${j.plate}, venster ${j.wFrom}–${j.wTo}`+(j.info?'\n\nINSTRUCTIES:\n'+j.info:'')};
-  if(ok){try{const hp=isFP(j.pickup,j.pickupFP)?5:12,hd=isFP(j.delivery,j.deliveryFP)?5:12,dep=new Date(+t+hp*mm),min=await carMin(j.pickup,j.delivery),arr=new Date(+dep+min*mm);c.tStart=tm(dep);c.tEnd=tm(arr);c.note+=`\nRijtijd ±${min} min (schatting, geen live verkeer) · ophalen ${hp} min${hp==5?' (Fleetpoort-locatie)':''}, afleveren ${hd} min${hd==5?' (Fleetpoort-locatie)':''}`;if(dep<atTime(j.date,j.wFrom))c.note+='\n⚠ Vertrek vóór het begin van het venster';t=new Date(+arr+hd*mm)}catch(e){ok=false;c.note+='\nNiet berekend: '+e.message}}
+  if(ok){try{const hp=isFP(j.pickup,j.pickupFP)?5:12,hd=isFP(j.delivery,j.deliveryFP)?5:12,dep=new Date(+t+hp*mm),cm=await carMin(j.pickup,j.delivery,dep),min=cm.min,arr=new Date(+dep+min*mm);c.tStart=tm(dep);c.tEnd=tm(arr);c.h={hp,hd};c.note+=`\nRijtijd ±${min} min (${cm.src=='Google'?'Google, met verkeer':'OSRM, schatting zonder verkeer'}) · ophalen ${hp} min${hp==5?' (Fleetpoort-locatie)':''}, afleveren ${hd} min${hd==5?' (Fleetpoort-locatie)':''}`;if(dep<atTime(j.date,j.wFrom))c.note+='\n⚠ Vertrek vóór het begin van het venster';t=new Date(+arr+hd*mm)}catch(e){ok=false;c.note+='\nNiet berekend: '+e.message}}
   out.push(c);prev=j.delivery}
- await ov(prev,home);return out}
+ await ov(prev,home);out.forEach(l=>l.d=jobs[0].date);return out}
 async function loadMail(){const o=$('#mst');try{if(!S.cfg.mail)throw Error('vul eerst de Gmail-koppeling in (Journeys → Planner)');o.textContent='Mails ophalen…';
  const r=await gas('mail');const all=(r.jobs||[]).filter(j=>!j.error&&j.date&&j.depart),days=[...new Set(all.map(j=>j.date))].sort(),d=days.find(x=>x>=ld())||days[days.length-1],jobs=all.filter(j=>j.date==d);if(!jobs.length)throw Error('geen opdrachten gevonden');
  o.textContent=`${jobs.length} opdracht(en) voor ${d}; route berekenen…`;const legs=await buildDay(jobs);
@@ -243,5 +245,33 @@ function ovPage(){const t=stats(S.ovrows||[]);const bar=(l,v,mx,txt)=>`<div styl
  <div class="card"><b>Per maand (gewerkte uren)</b>${t.months.map(m=>bar(m.l,m.w,mxm,f1(m.w)+' · '+m.n+'×')).join('')}</div>
  <div class="card"><b>Per weekdag (gewerkte uren)</b>${t.wd.map(m=>bar(m.l,m.w,mxw,f1(m.w)+' · '+m.n+'×')).join('')}</div>
  <div class="card"><b>Dienstduur (aantal diensten)</b>${t.bk.map(b=>bar(b.l,b.n,mxb,b.n)).join('')}</div>`}
+
+const carC={};
+async function carMinC(a,b,dep){const k=a+'|'+b+'|'+Math.floor(dep/18e5);return carC[k]||(carC[k]=await carMin(a,b,dep))}
+async function project(legs,i,t,spd){for(let k=i;k<legs.length;k++){const l=legs[k];
+ if(l.type=='OV'){const it=await ovPlan(l.from,l.to,t,k==i?spd:0);t=new Date(it.endTime)}
+ else if(l.type=='Auto'){const x=l.h||{hp:12,hd:12};t=new Date(+t+x.hp*6e4);const m=(await carMinC(l.from,l.to,t)).min;t=new Date(+t+(m+x.hd)*6e4)}
+ else throw Error('stap '+(k+1)+' heeft geen soort (OV of Auto)')}return t}
+async function recalc(){const st=steps();let idx=-1;st.forEach((s,i)=>{if(s.r.st=='klaar'&&s.r.end)idx=i});
+ if(idx<0){S.clk=null;save();render();return}
+ S.clk={...(S.clk||{}),busy:1};render();
+ try{const last=st[idx],T=new Date(last.r.end),pe=last.j.tEnd?atTime(last.j.d||ld(),last.j.tEnd):null,delta=pe?Math.round((pe-T)/6e4):null,rest=S.j.slice(idx+1),thr=parseInt(S.cfg.thr)||10;
+  let end=T,gain=0;
+  if(rest.length){let t0=new Date(+T+(last.k=='Auto'?((last.j.h&&last.j.h.hd)??12):0)*6e4);if(t0<new Date())t0=new Date();
+   end=await project(S.j,idx+1,t0,0);
+   if(rest[0].type=='OV'){const eh=await project(S.j,idx+1,t0,1.5);gain=Math.round((end-eh)/6e4)}}
+  const ll=S.j[S.j.length-1],plan=ll.tEnd?atTime(ll.d||ld(),ll.tEnd):null,hurry=rest.length>0&&rest[0].type=='OV'&&gain>=thr;
+  const adv=!rest.length?'Alles afgerond.':rest[0].type!='OV'?'Volgende stap is autorijden: haasten kan hier niet.':hurry?`Haast je: ${gain} min eerder klaar.`:`Rustig aan: haasten levert maar ${Math.max(gain,0)} min op.`;
+  S.clk={at:Date.now(),delta,end:end.toISOString(),plan:plan&&plan.toISOString(),adv,gain,hurry}}
+ catch(e){S.clk={at:Date.now(),err:e.message}}save();render()}
+function clockHTML(){const c=S.clk;if(!S.j.length)return'';
+ if(!c)return`<div class="card"><b>Klok</b><p class="m">Nog niets afgerond. Zodra je een stap afvinkt (Klaar), zie je hier of je voor of achter loopt en wat de rest van de dag doet.</p></div>`;
+ if(c.err)return`<div class="card"><b>Klok</b><p class="w">Herberekenen mislukt: ${esc(c.err)}</p><button class="g" style="width:100%" onclick="recalc()">Opnieuw proberen</button></div>`;
+ const d=c.delta,ahead=d!=null&&d>=0,col=d==null?'inherit':ahead?'var(--ok)':'var(--w)',e=c.end?tm(c.end):'',p=c.plan?tm(c.plan):'',df=c.end&&c.plan?Math.round((new Date(c.plan)-new Date(c.end))/6e4):null;
+ return`<div class="card"><div class="m">Klok · bijgewerkt ${tm(c.at)}${c.busy?' · berekenen…':''}</div><div class="big" style="color:${col}">${d==null?'—':ahead?d+' min voor op planning':(-d)+' min achter op planning'}</div>
+ <div class="m">Verwacht einde van de dag ${e} · plan ${p}${df==null?'':df>=0?` (${df} min eerder)`:` (${-df} min later)`}</div>
+ <p style="margin:8px 0 0;font-weight:700;color:${c.hurry?'var(--ok)':'var(--m)'}">${esc(c.adv||'')}</p>
+ <p class="m" style="margin:4px 0 0">Eerder klaar = volledig betaald; vertraging wordt vergoed.</p><button class="g" style="width:100%;margin-top:8px" onclick="recalc()">Herbereken nu</button></div>`}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.clk&&!S.clk.err&&Date.now()-S.clk.at>3e5&&steps().some(open))recalc()});
 render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
