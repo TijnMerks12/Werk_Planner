@@ -51,7 +51,7 @@ const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>
 const E=()=>({j:[],s:{},h:[],f:null});
 let S;try{S=JSON.parse(localStorage.getItem('fjp2'))||E()}catch(e){S=E()}S.cfg=S.cfg||{};
 let C=[],view='now';
-const save=()=>{try{localStorage.setItem('fjp2',JSON.stringify(S))}catch(e){}},uid=()=>Math.random().toString(36).slice(2,9);
+const save=()=>{try{localStorage.setItem('fjp2',JSON.stringify(S))}catch(e){}try{schedPush()}catch(e){}},uid=()=>Math.random().toString(36).slice(2,9);
 const hm=t=>t?new Date(t).toTimeString().slice(0,5):'',mn=s=>{const m=/^(\d\d):(\d\d)$/.exec(s||'');return m?+m[1]*60+ +m[2]:null};
 const F=[['type','Soort (OV of Auto)'],['from','Van (adres, postcode)'],['to','Naar (adres, postcode)'],['tStart','Vertrek (UU:MM; bij auto: uiterlijk)'],['tEnd','Aankomst (UU:MM)'],['note','Details']];
 const form=(o,c,i)=>F.map(([k,l])=>`<label>${l}${c=='c'&&o.flags?.includes(k)?' <b class="w">⚠ niet betrouwbaar herkend</b>':''}${k=='note'?`<textarea rows="5" data-c="${c}" data-i="${i}" data-k="${k}">${esc(o[k])}</textarea>`:`<input data-c="${c}" data-i="${i}" data-k="${k}" value="${esc(o[k])}" ${k[0]=='t'&&k!='type'?'inputmode="numeric" placeholder="09:30"':''}>`}</label>`).join('');
@@ -80,7 +80,7 @@ function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(o
  else h+='<div class="card big">Alle stappen afgerond 🎉 Bekijk het Rapport.</div>';
  h+='<h2>Tijdlijn</h2>'+st.map(s=>`<div class="card ${s.r.st}" onclick="S.f='${s.id}';render()"><span class="chip">${s.r.st}</span> <b>${s.n}.</b> ${esc(s.t)}<div class="m">${s.r.end?'klaar '+hm(s.r.end):''}${' · '+esc(s.j.tStart||'?')+'→'+esc(s.j.tEnd||'?')}</div></div>`).join('')}
  $('#v-now').innerHTML=clockHTML()+h;
- $('#v-j').innerHTML=S.j.map((j,i)=>`<div class="card"><b>Journey ${i+1}</b>${form(j,'j',i)}${j.raw?`<details><summary>Originele OCR-tekst</summary><pre>${esc(j.raw)}</pre></details>`:''}<div class="row"><button class="g" onclick="mv(${i},-1)">↑</button><button class="g" onclick="mv(${i},1)">↓</button><button class="r" onclick="if(confirm('Verwijderen?')){S.j.splice(${i},1);save();render()}">Verwijder</button></div></div>`).join('')+`<div class="row"><button class="g" onclick="S.j.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:''});save();render()">+ Journey</button><button class="r" onclick="newDay()">Nieuwe dag</button></div><p class="m">Volgorde wijzig je alleen zelf (↑ ↓). De app herordent nooit zelf.</p>${SET()}`;
+ $('#v-j').innerHTML=dayCard()+S.j.map((j,i)=>`<div class="card"><b>Journey ${i+1}</b>${form(j,'j',i)}${j.raw?`<details><summary>Originele OCR-tekst</summary><pre>${esc(j.raw)}</pre></details>`:''}<div class="row"><button class="g" onclick="mv(${i},-1)">↑</button><button class="g" onclick="mv(${i},1)">↓</button><button class="r" onclick="if(confirm('Verwijderen?')){S.j.splice(${i},1);save();render()}">Verwijder</button></div></div>`).join('')+`<div class="row"><button class="g" onclick="S.j.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:''});save();render()">+ Journey</button><button class="r" onclick="newDay()">Nieuwe dag</button></div><p class="m">Volgorde wijzig je alleen zelf (↑ ↓). De app herordent nooit zelf.</p>${SET()}`;
  rep(st);$('#v-ov').innerHTML=ovPage()}
 const mv=(i,d)=>{const j=i+d;if(j<0||j>=S.j.length)return;[S.j[i],S.j[j]]=[S.j[j],S.j[i]];save();render()};
 function newDay(){if(!confirm('Huidige dag archiveren en leegmaken?'))return;S.h.push({d:new Date().toISOString().slice(0,10),j:S.j,s:S.s});S.j=[];S.s={};S.f=null;save();render()}
@@ -256,20 +256,20 @@ async function project(legs,i,t,spd,spdIdx){for(let k=i;k<legs.length;k++){const
 async function recalc(){const st=steps();let idx=-1;st.forEach((s,i)=>{if(s.r.st=='klaar'&&s.r.end)idx=i});
  if(idx<0){S.clk=null;save();render();return}
  S.clk={...(S.clk||{}),busy:1};render();
- try{const last=st[idx],T=new Date(last.r.end),pe=last.j.tEnd?atTime(last.j.d||ld(),last.j.tEnd):null,delta=pe?Math.round((pe-T)/6e4):null,thr=parseInt(S.cfg.thr)||10;
+ try{const last=st[idx],T=new Date(last.r.end),pe=last.j.tEnd?atTime(last.j.d||curDay(),last.j.tEnd):null,delta=pe?Math.round((pe-T)/6e4):null,thr=parseInt(S.cfg.thr)||10;
   const rest=S.j.slice(idx+1);let nov=rest.findIndex(l=>l.type=='OV');nov=nov<0?-1:idx+1+nov;
   let t0=new Date(+T+(last.k=='Auto'?((last.j.h&&last.j.h.hd)??12):0)*6e4);if(t0<new Date())t0=new Date();
   let end=T;if(rest.length)end=await project(S.j,idx+1,t0,0,-1);
   let gain=0;if(nov>=0){const eh=await project(S.j,idx+1,t0,1.5,nov);gain=Math.round((end-eh)/6e4)}
-  const ll=S.j[S.j.length-1],plan=ll.tEnd?atTime(ll.d||ld(),ll.tEnd):null,behind=delta!=null&&delta<0;
+  const ll=S.j[S.j.length-1],plan=ll.tEnd?atTime(ll.d||curDay(),ll.tEnd):null,behind=delta!=null&&delta<0;
   const adv=!rest.length?'Alles afgerond.':nov<0?'Geen OV-stap meer: haasten levert hier niets op.':behind?'Rustig aan: je loopt achter en vertraging wordt vergoed. Niet inlopen.':gain>=thr?`Haast je: ${gain} min eerder klaar bij de volgende OV-stap.`:`Rustig aan: haasten levert maar ${Math.max(gain,0)} min op.`;
   S.clk={at:Date.now(),delta,end:end.toISOString(),plan:plan&&plan.toISOString(),adv,gain,hurry:!behind&&nov>=0&&gain>=thr}}
  catch(e){S.clk={at:Date.now(),err:e.message}}save();render()}
 function hereLL(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(Error('geen GPS op dit apparaat'));navigator.geolocation.getCurrentPosition(p=>res(p.coords.latitude.toFixed(6)+','+p.coords.longitude.toFixed(6)),()=>rej(Error('locatie geweigerd of niet beschikbaar')),{enableHighAccuracy:true,timeout:10000,maximumAge:60000})})}
 async function planHere(id){const box=$('#pl-'+id);box.innerHTML='<p class="m">Locatie ophalen…</p>';try{const ll=await hereLL();await plan(id,ll,true)}catch(e){box.innerHTML='<p class="w">'+esc(e.message)+'</p>'}}
-function dayRowFromClock(){const L=S.j;if(!L.length||!L[0].d)return null;const f=L[0],l=L[L.length-1],pFrom=f.tStart,pTo=l.tEnd,sF=S.s[f.id]&&S.s[f.id].start,eL=S.s[l.id]&&S.s[l.id].end,base=atTime(f.d,pTo||'00:00');
+function dayRowFromClock(){const L=S.j;if(!L.length)return null;const f=L[0],l=L[L.length-1],pFrom=f.tStart,pTo=l.tEnd,sF=S.s[f.id]&&S.s[f.id].start,eL=S.s[l.id]&&S.s[l.id].end,base=atTime(f.d||curDay(),pTo||'00:00');
  const delay=eL&&pTo?Math.max(0,Math.round((eL-base)/6e4)):0;
- return{date:f.d.split('-').reverse().join('-'),begin:sF?hm(sF):pFrom,eind:eL?hm(eL):pTo,paidFrom:pFrom,paidTo:pTo,delay}}
+ return{date:(f.d||curDay()).split('-').reverse().join('-'),begin:sF?hm(sF):pFrom,eind:eL?hm(eL):pTo,paidFrom:pFrom,paidTo:pTo,delay}}
 async function writeDay(){const o=$('#wdm');try{const r=dayRowFromClock();if(!r)throw Error('geen dag om op te slaan');if(!S.cfg.mail)throw Error('vul eerst de Apps Script-link in');
  const res=await(await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addDay',s:S.cfg.sess||'',date:r.date,row:r})})).json();if(res.error)throw Error(res.error);o.textContent='Toegevoegd aan Werk overzicht (rij '+res.row+').'}catch(e){o.textContent='Mislukt: '+e.message}}
 function clockHTML(){const c=S.clk;if(!S.j.length)return'';
@@ -281,5 +281,15 @@ function clockHTML(){const c=S.clk;if(!S.j.length)return'';
  <p style="margin:8px 0 0;font-weight:700;color:${c.hurry?'var(--ok)':'var(--m)'}">${esc(c.adv||'')}</p>
  <p class="m" style="margin:4px 0 0">Eerder klaar = volledig betaald; vertraging wordt vergoed.</p><button class="g" style="width:100%;margin-top:8px" onclick="recalc()">Herbereken nu</button></div>`}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.clk&&!S.clk.err&&Date.now()-S.clk.at>3e5&&steps().some(open))recalc()});
+function curDay(){return S.day||(S.j.find(j=>j.d)||{}).d||ld()}
+function dayCard(){return `<div class="card"><b>Dag</b><label>Datum van deze dag<input type="date" id="dayin" value="${esc(curDay())}"></label><div class="row"><button onclick="setDay(document.getElementById('dayin').value)">Datum toepassen</button><button class="r" onclick="wipeDay()">Hele dag verwijderen</button></div><p class="m">De datum geldt voor alle tijden van deze dag. Verwijderen wist alle journeys van deze dag; het archief blijft staan.</p></div>`}
+function setDay(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){alert('Kies een geldige datum');return}const old=curDay();if(old!=v)dropRemote(old);S.day=v;S.j.forEach(j=>j.d=v);S.clk=null;save();render()}
+function wipeDay(){if(!confirm('Alle journeys van deze dag verwijderen?'))return;dropRemote(curDay());S.j=[];S.s={};S.clk=null;S.f=null;S.day=null;save();render()}
+let pushT=null;
+function schedPush(){clearTimeout(pushT);pushT=setTimeout(pushDay,2500)}
+async function pushDay(){if(!S.cfg.mail||!S.cfg.sess||!S.j.length)return;try{const r=dayRowFromClock();if(!r)return;
+ const complete=S.j.every(j=>{const x=S.s[j.id];return x&&(x.st=='klaar'||x.st=='overgeslagen')});
+ await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'saveDay',s:S.cfg.sess,date:curDay(),row:r,complete})})}catch(e){}}
+async function dropRemote(d){if(!S.cfg.mail||!S.cfg.sess||!d)return;try{await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'dropDay',s:S.cfg.sess,date:d})})}catch(e){}}
 render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
