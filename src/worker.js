@@ -14,7 +14,7 @@ const page = (msg) => new Response(`<!doctype html><html lang="nl"><head><meta c
 input,button{width:100%;box-sizing:border-box;font:inherit;padding:14px;border-radius:12px;border:1px solid #ccc;margin-top:12px}button{background:#0b5fff;color:#fff;border:0;font-weight:600}p{color:#d33;margin:8px 0 0}
 @media(prefers-color-scheme:dark){body{background:#000;color:#fff}form{background:#1c1c1e}input{background:#000;color:#fff;border-color:#3a3a3e}}</style></head>
 <body><form method="POST" action="/__login"><b>Werk Planner</b><input type="password" name="p" placeholder="Wachtwoord" autocomplete="current-password" autofocus required><button>Inloggen</button>${msg ? '<p>' + msg + '</p>' : ''}</form></body></html>`,
-  { status: 401, headers: { 'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store' } });
+  { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store' } });
 
 // Autorijtijd met verkeer via Google Routes API. Alleen bereikbaar na inloggen; GOOGLE_KEY staat als geheim in Cloudflare.
 async function route(url, env) {
@@ -56,7 +56,7 @@ async function handle(request, env) {
     const f = await request.formData(), given = String(f.get('p') || '');
     if (same(await sign('x', given), await sign('x', env.SITE_PASSWORD))) {
       const e = String(Date.now() + DAYS * 864e5);
-      return new Response(null, { status: 303, headers: { Location: '/', 'Set-Cookie': `${COOKIE}=${e}.${await sign(e, env.SITE_PASSWORD)}; Path=/; Max-Age=${DAYS * 86400}; HttpOnly; Secure; SameSite=Strict` } });
+      return new Response(null, { status: 303, headers: { Location: '/', 'Set-Cookie': `${COOKIE}=${e}.${await sign(e, env.SITE_PASSWORD)}; Path=/; Max-Age=${DAYS * 86400}; HttpOnly; Secure; SameSite=Lax` } });
     }
     await new Promise(r => setTimeout(r, 1200));                 // remt gokken af
     return page('Onjuist wachtwoord');
