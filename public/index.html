@@ -67,6 +67,8 @@ function act(id,a){const s=steps().find(x=>x.id==id),r=S.s[id];
  if(a=='done'){if(!r.start&&steps()[0]&&steps()[0].id==id){const dflt=s.j.tStart||'';const v=prompt('Werkelijke vertrektijd (UU:MM):',dflt);if(v===null)return;const m=/^(\d{1,2}):(\d{2})$/.exec(v.trim());const base=m?atTime(curDay(),String(m[1]).padStart(2,'0')+':'+m[2]):(dflt?atTime(curDay(),dflt):new Date());r.start=base.getTime()}r.st='klaar';r.end=Date.now();S.f=null}
  if(a=='skip'){r.st='overgeslagen';S.f=null}
  if(a=='delay'){const m=parseInt(prompt('Hoeveel minuten vertraging?'),10);if(isNaN(m))return;r.delay=m;r.cause=prompt('Oorzaak (bijv. trein 15 min te laat)?')||'';if(r.st!='bezig')r.st='vertraagd'}
+ if(a=='dep'){r.dep=Date.now();if(r.st=='todo')r.st='bezig'}
+ if(a=='arr'){r.arr=Date.now()}
  if(a=='reset'){S.s[id]={st:'todo'}}
  save();render();if(a=='done')setTimeout(recalc,0)}
 function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(open);
@@ -74,7 +76,7 @@ function render(){const st=steps(),cur=st.find(s=>s.id==S.f&&open(s))||st.find(o
  else{if(cur){const r=cur.r;h+=`<div class="card ${r.st}"><div class="m">Stap ${cur.n} van ${st.length} · ${esc(cur.k)}</div><div class="big">${esc(cur.t)}</div>
  <div class="m">${cur.k=='Auto'?'Vertrek uiterlijk '+esc(cur.j.tStart||'?')+' · aankomst gepland '+esc(cur.j.tEnd||'?'):'Vertrek '+esc(cur.j.tStart||'?')+' · aankomst '+esc(cur.j.tEnd||'?')}${r.start?' · gestart '+hm(r.start):''}</div>
  ${cur.j.note?`<p class="m" style="white-space:pre-line">${esc(cur.j.note)}</p>`:''}${r.route?`<div class="card" style="white-space:pre-line;margin:8px 0"><b>Gekozen route</b>\n${esc(r.route)}</div>`:''}
- <div class="row">${r.st=='bezig'?'':`<button onclick="act('${cur.id}','start')">Start</button>`}<button class="ok" onclick="act('${cur.id}','done')">Klaar ✓</button></div>
+ <div class="row">${r.st=='bezig'?'':`<button onclick="act('${cur.id}','start')">Start</button>`}<button class="ok" onclick="act('${cur.id}','done')">Klaar ✓</button></div>${cur.k=='OV'?`<div class="row"><button class="g" onclick="act('${cur.id}','dep')">Ik ben vertrokken${r.dep?' ('+hm(r.dep)+')':''}</button><button class="g" onclick="act('${cur.id}','arr')">Ik ben aangekomen${r.arr?' ('+hm(r.arr)+')':''}</button></div>`:''}
  <div class="row"><button class="g" onclick="act('${cur.id}','delay')">Vertraging</button><button class="g" onclick="act('${cur.id}','skip')">Overslaan</button></div>
  ${cur.k=='OV'?`<div class="row"><button onclick="plan('${cur.id}')">Route zoeken</button><button class="g" onclick="planHere('${cur.id}')">Vanaf mijn plek</button></div>`:''}<div id="pl-${cur.id}"></div></div>`}
  else h+='<div class="card big">Alle stappen afgerond 🎉 Bekijk het Rapport.</div>';
@@ -168,7 +170,7 @@ $('#ocr').onclick=async()=>{const fs=[...$('#files').files];if(!fs.length)return
  cands()};
 $('#man').onclick=()=>{C.push({id:uid(),type:'',from:'',to:'',tStart:'',tEnd:'',note:'',raw:'',flags:[]});cands()};
 function cands(){$('#cands').innerHTML=C.map((c,i)=>`<div class="card"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ck${i}" ${c.dup?'':'checked'}> Toevoegen ${c.dup?'<b class="w">⚠ mogelijk dubbel</b>':''}</label>${form(c,'c',i)}<details><summary>Originele OCR-tekst (${esc(c.src||'')})</summary><pre>${esc(c.raw)}</pre></details></div>`).join('')+(C.length?'<button style="width:100%" onclick="addSel()">Toevoegen aan vandaag</button>':'')}
-function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),type:c.type,from:c.from,to:c.to,tStart:c.tStart,tEnd:c.tEnd,note:c.note,raw:c.raw,key:c.key,h:c.h,d:c.d})});C=[];save();cands();go('now')}
+function addSel(){C.forEach((c,i)=>{if($('#ck'+i)?.checked)S.j.push({id:uid(),type:c.type,from:c.from,to:c.to,tStart:c.tStart,tEnd:c.tEnd,note:c.note,raw:c.raw,key:c.key,h:c.h,d:c.d,dep:c.dep,arr:c.arr})});C=[];save();cands();go('now')}
 
 const SET=()=>`<h2>Planner</h2><div class="card"><label>Planner-adres (nu: https://api.transitous.org)<input value="${esc(S.cfg.url||'')}" oninput="S.cfg.url=this.value.trim();save()"></label><label>Thuisadres (alleen op deze telefoon bewaard)<input value="${esc(S.cfg.home||'')}" oninput="S.cfg.home=this.value.trim();save()"></label><label>Apps Script-link (de /exec-link, zonder token)<input value="${esc(S.cfg.mail||'')}" oninput="S.cfg.mail=this.value.trim();save()"></label><label>Gebruikersnaam<input id="lu" autocomplete="username"></label><label>Wachtwoord<input id="lp" type="password" autocomplete="current-password"></label><button class="g" style="width:100%;margin-top:8px" onclick="login()">Inloggen</button><p id="lg" class="m">${S.cfg.sess?'Ingelogd op dit apparaat.':'Niet ingelogd.'}</p><label>Rijtijd-factor voor OSRM (1.0 = geen toeslag; geldt niet voor Google)<input inputmode="decimal" value="${esc(S.cfg.carf||'1.0')}" oninput="S.cfg.carf=this.value.trim();save()"></label><label>Fleetpoort-locaties (postcodes of adresdelen, met komma's; ophalen/afleveren daar 5 min)<input value="${esc(S.cfg.fp||'')}" oninput="S.cfg.fp=this.value.trim();save()"></label><label>Haasten loont vanaf (minuten eerder klaar)<input inputmode="numeric" value="${esc(S.cfg.thr||'10')}" oninput="S.cfg.thr=this.value.trim();save()"></label><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" ${S.cfg.demo?'checked':''} onchange="S.cfg.demo=this.checked;save()"> Demo-modus (GESIMULEERDE data)</label><button class="g" style="width:100%;margin-top:8px" onclick="ptest()">Test planner</button><p id="pt" class="m"></p></div>`;
 const api=async p=>{const r=await fetch((S.cfg.url||'')+p);if(!r.ok)throw Error('Planner antwoordde '+r.status);return r.json()};
@@ -207,7 +209,7 @@ async function carMin(a,b,dep){const [f,t]=await Promise.all([geo(a),geo(b)]);
  const sw=x=>x.split(',').reverse().join(','),r=await(await fetch(`https://router.project-osrm.org/route/v1/driving/${sw(f)};${sw(t)}?overview=false`)).json();if(!r.routes||!r.routes.length)throw Error('geen autoroute');return{min:Math.round(r.routes[0].duration/60*(parseFloat(S.cfg.carf)||1)),src:'OSRM'}}
 async function buildDay(jobs){const mm=6e4,out=[],home=S.cfg.home;if(!home)throw Error('vul eerst je thuisadres in (Journeys → Planner)');
  let t=atTime(jobs[0].date,jobs[0].depart),prev=home,ok=true;
- const ov=async(from,to)=>{const l={type:'OV',from,to,tStart:'',tEnd:'',note:''};if(ok){try{const it=await ovPlan(from,to,t);l.tStart=tm(it.startTime);l.tEnd=tm(it.endTime);l.note=itxt(it)+`\n(zoekpunten: ${(S.geoN||{})[from]||from} → ${(S.geoN||{})[to]||to})`;t=new Date(it.endTime)}catch(e){ok=false;l.note='Niet berekend: '+e.message+'. Volgende stappen hebben daardoor geen tijden.'}}else l.note='Niet berekend (vorige stap mislukt).';out.push(l)};
+ const ov=async(from,to)=>{const l={type:'OV',from,to,tStart:'',tEnd:'',note:''};if(ok){try{const it=await ovPlan(from,to,t);l.tStart=tm(it.startTime);l.tEnd=tm(it.endTime);{const tr=it.legs.filter(x=>x.mode!='WALK');if(tr.length){l.dep=tm(tr[0].startTime);l.arr=tm(tr[tr.length-1].endTime)}}l.note=itxt(it)+`\n(zoekpunten: ${(S.geoN||{})[from]||from} → ${(S.geoN||{})[to]||to})`;t=new Date(it.endTime)}catch(e){ok=false;l.note='Niet berekend: '+e.message+'. Volgende stappen hebben daardoor geen tijden.'}}else l.note='Niet berekend (vorige stap mislukt).';out.push(l)};
  for(const j of jobs){await ov(prev,j.pickup);
   const tg=[[/was(sen|straat|serette)|carwash/i,'Wassen'],[/tanken/i,'Tanken'],[/opladen|laden/i,'Opladen'],[/stofzuig/i,'Stofzuigen']].filter(([r])=>r.test(j.info||'')).map(x=>x[1]);
   const c={type:'Auto',from:j.pickup,to:j.delivery,tStart:'',tEnd:'',note:(tg.length?'⚠ '+tg.join(' · ')+'\n':'')+`Opdracht ${j.plate}, venster ${j.wFrom}–${j.wTo}`+(j.info?'\n\nINSTRUCTIES:\n'+j.info:'')};
@@ -267,12 +269,31 @@ async function recalc(){const st=steps();let idx=-1;st.forEach((s,i)=>{if(s.r.st
  catch(e){S.clk={at:Date.now(),err:e.message}}save();render()}
 function hereLL(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(Error('geen GPS op dit apparaat'));navigator.geolocation.getCurrentPosition(p=>res(p.coords.latitude.toFixed(6)+','+p.coords.longitude.toFixed(6)),()=>rej(Error('locatie geweigerd of niet beschikbaar')),{enableHighAccuracy:true,timeout:10000,maximumAge:60000})})}
 async function planHere(id){const box=$('#pl-'+id);box.innerHTML='<p class="m">Locatie ophalen…</p>';try{const ll=await hereLL();await plan(id,ll,true)}catch(e){box.innerHTML='<p class="w">'+esc(e.message)+'</p>'}}
+async function itList(from,to,at){const [f,t]=await Promise.all([geo(from),geo(to)]);const q=`/api/v5/plan?fromPlace=${f}&toPlace=${t}&time=${encodeURIComponent(at.toISOString())}&arriveBy=false&numItineraries=6`;let r;try{r=await api(q+'&maxPreTransitTime=1800&maxPostTransitTime=1800')}catch(e){r=await api(q)}return r.itineraries||[]}
+// Zoekt de rit met hetzelfde geplande vertrek en geeft de (realtime) vertrek- en aankomsttijd
+async function rtFor(l){const at=new Date(+atTime(l.d||curDay(),l.dep)-20*6e4);const its=await itList(l.from,l.to,at);
+ for(const it of its){const tr=it.legs.filter(x=>x.mode!='WALK');if(!tr.length)continue;
+  if(tm(tr[0].scheduledStartTime||tr[0].startTime)===l.dep)return{dep:new Date(tr[0].startTime),arr:new Date(tr[tr.length-1].endTime),rt:!!tr[0].realTime}}
+ return null}
+let rtBusy=false;
+async function rtRefresh(){if(rtBusy||!S.cfg.url&&!S.cfg.mail)return;if(!S.j.length)return;rtBusy=true;
+ try{let changed=false;const now=Date.now(),ovs=S.j.filter(l=>l.type=='OV'&&l.dep);
+  if(ovs.length){const f=ovs[0],l=ovs[ovs.length-1];
+   const x=S.s[f.id]=S.s[f.id]||{st:'todo'};
+   if(!x.dep&&now>+atTime(f.d||curDay(),f.dep)-20*6e4&&(!x.rtAt||now-x.rtAt>3*6e4)){x.rtAt=now;const r=await rtFor(f);if(r){x.rtDep=+r.dep;changed=true}}
+   const y=S.s[l.id]=S.s[l.id]||{st:'todo'};
+   if(!y.arr&&now>+atTime(l.d||curDay(),l.dep)-20*6e4&&(!y.rtAt||now-y.rtAt>3*6e4)){y.rtAt=now;const r=await rtFor(l);if(r){y.rtArr=+r.arr;changed=true}}
+  }
+  if(changed){save();render()}}catch(e){}finally{rtBusy=false}}
 function dayRowFromClock(){const L=S.j;if(!L.length)return null;const ovs=L.filter(l=>l.type=='OV');if(!ovs.length)return null;
- const f=ovs[0],l=ovs[ovs.length-1],sF=S.s[f.id]&&S.s[f.id].start,eL=S.s[l.id]&&S.s[l.id].end,dt=f.d||curDay(),
-  pFrom=f.tStart,pTo=l.tEnd,plannedEnd=atTime(dt,pTo||'00:00');
- // begin/eind = werkelijk (incl. vertraging); betaald vanaf/tot = gepland zonder vertraging
- const delay=eL&&pTo?Math.max(0,Math.round((eL-plannedEnd)/6e4)):0;
- return{date:dt.split('-').reverse().join('-'),begin:sF?hm(sF):pFrom,eind:eL?hm(eL):pTo,paidFrom:pFrom,paidTo:pTo,delay}}
+ const f=ovs[0],l=ovs[ovs.length-1],dt=f.d||curDay(),sx=S.s[f.id]||{},lx=S.s[l.id]||{};
+ const pFrom=f.dep||f.tStart,pTo=l.arr||l.tEnd,plannedEnd=atTime(dt,pTo||'00:00');
+ // begin = echte vertrek van de eerste rit (realtime); eind = echte aankomst van de laatste rit
+ // betaald vanaf/tot = geplande eerste vertrek en laatste aankomst (zonder lopen, zonder vertraging)
+ const startMs=sx.dep||sx.rtDep,endMs=lx.arr||lx.rtArr;
+ const begin=startMs?hm(startMs):pFrom,eind=endMs?hm(endMs):pTo;
+ const delay=endMs&&pTo?Math.max(0,Math.round((endMs-plannedEnd)/6e4)):0;
+ return{date:dt.split('-').reverse().join('-'),begin,eind,paidFrom:pFrom,paidTo:pTo,delay}}
 async function writeDay(){const o=$('#wdm');try{const r=dayRowFromClock();if(!r)throw Error('geen dag om op te slaan');if(!S.cfg.mail)throw Error('vul eerst de Apps Script-link in');
  const res=await(await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addDay',s:S.cfg.sess||'',date:r.date,row:r})})).json();if(res.error)throw Error(res.error);o.textContent='Toegevoegd aan Werk overzicht (rij '+res.row+').'}catch(e){o.textContent='Mislukt: '+e.message}}
 function clockHTML(){const c=S.clk;if(!S.j.length)return'';
@@ -294,5 +315,5 @@ async function pushDay(){if(!S.cfg.mail||!S.cfg.sess||!S.j.length)return;try{con
  const complete=S.j.every(j=>{const x=S.s[j.id];return x&&(x.st=='klaar'||x.st=='overgeslagen')});
  await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'saveDay',s:S.cfg.sess,date:curDay(),row:r,complete})})}catch(e){}}
 async function dropRemote(d){if(!S.cfg.mail||!S.cfg.sess||!d)return;try{await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'dropDay',s:S.cfg.sess,date:d})})}catch(e){}}
-render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+render();rtRefresh();setInterval(()=>{if(!document.hidden)rtRefresh()},12e4);document.addEventListener('visibilitychange',()=>{if(!document.hidden)rtRefresh()});if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
