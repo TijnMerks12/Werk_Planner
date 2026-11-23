@@ -64,7 +64,7 @@ function go(v){view=v;document.querySelectorAll('.v').forEach(x=>x.classList.tog
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 function act(id,a){const s=steps().find(x=>x.id==id),r=S.s[id];
  if(a=='start'){r.st='bezig';r.start=Date.now()}
- if(a=='done'){r.st='klaar';r.end=Date.now();S.f=null}
+ if(a=='done'){if(!r.start&&steps()[0]&&steps()[0].id==id){const dflt=s.j.tStart||'';const v=prompt('Werkelijke vertrektijd (UU:MM):',dflt);if(v===null)return;const m=/^(\d{1,2}):(\d{2})$/.exec(v.trim());const base=m?atTime(curDay(),String(m[1]).padStart(2,'0')+':'+m[2]):(dflt?atTime(curDay(),dflt):new Date());r.start=base.getTime()}r.st='klaar';r.end=Date.now();S.f=null}
  if(a=='skip'){r.st='overgeslagen';S.f=null}
  if(a=='delay'){const m=parseInt(prompt('Hoeveel minuten vertraging?'),10);if(isNaN(m))return;r.delay=m;r.cause=prompt('Oorzaak (bijv. trein 15 min te laat)?')||'';if(r.st!='bezig')r.st='vertraagd'}
  if(a=='reset'){S.s[id]={st:'todo'}}
@@ -267,9 +267,12 @@ async function recalc(){const st=steps();let idx=-1;st.forEach((s,i)=>{if(s.r.st
  catch(e){S.clk={at:Date.now(),err:e.message}}save();render()}
 function hereLL(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(Error('geen GPS op dit apparaat'));navigator.geolocation.getCurrentPosition(p=>res(p.coords.latitude.toFixed(6)+','+p.coords.longitude.toFixed(6)),()=>rej(Error('locatie geweigerd of niet beschikbaar')),{enableHighAccuracy:true,timeout:10000,maximumAge:60000})})}
 async function planHere(id){const box=$('#pl-'+id);box.innerHTML='<p class="m">Locatie ophalen…</p>';try{const ll=await hereLL();await plan(id,ll,true)}catch(e){box.innerHTML='<p class="w">'+esc(e.message)+'</p>'}}
-function dayRowFromClock(){const L=S.j;if(!L.length)return null;const f=L[0],l=L[L.length-1],pFrom=f.tStart,pTo=l.tEnd,sF=S.s[f.id]&&S.s[f.id].start,eL=S.s[l.id]&&S.s[l.id].end,base=atTime(f.d||curDay(),pTo||'00:00');
- const delay=eL&&pTo?Math.max(0,Math.round((eL-base)/6e4)):0;
- return{date:(f.d||curDay()).split('-').reverse().join('-'),begin:sF?hm(sF):pFrom,eind:eL?hm(eL):pTo,paidFrom:pFrom,paidTo:pTo,delay}}
+function dayRowFromClock(){const L=S.j;if(!L.length)return null;const ovs=L.filter(l=>l.type=='OV');if(!ovs.length)return null;
+ const f=ovs[0],l=ovs[ovs.length-1],sF=S.s[f.id]&&S.s[f.id].start,eL=S.s[l.id]&&S.s[l.id].end,dt=f.d||curDay(),
+  pFrom=f.tStart,pTo=l.tEnd,plannedEnd=atTime(dt,pTo||'00:00');
+ // begin/eind = werkelijk (incl. vertraging); betaald vanaf/tot = gepland zonder vertraging
+ const delay=eL&&pTo?Math.max(0,Math.round((eL-plannedEnd)/6e4)):0;
+ return{date:dt.split('-').reverse().join('-'),begin:sF?hm(sF):pFrom,eind:eL?hm(eL):pTo,paidFrom:pFrom,paidTo:pTo,delay}}
 async function writeDay(){const o=$('#wdm');try{const r=dayRowFromClock();if(!r)throw Error('geen dag om op te slaan');if(!S.cfg.mail)throw Error('vul eerst de Apps Script-link in');
  const res=await(await fetch(S.cfg.mail,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addDay',s:S.cfg.sess||'',date:r.date,row:r})})).json();if(res.error)throw Error(res.error);o.textContent='Toegevoegd aan Werk overzicht (rij '+res.row+').'}catch(e){o.textContent='Mislukt: '+e.message}}
 function clockHTML(){const c=S.clk;if(!S.j.length)return'';
